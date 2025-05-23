@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { Package, Users, ShoppingBag, TrendingUp, Settings, Percent } from 'lucide-react'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import OrderManagement from './OrderManagement'
 import PromoCodeManagement from './PromoCodeManagement'
 import ProductManagement from './ProductManagement'
@@ -7,6 +9,9 @@ import CustomerManagement from './CustomerManagement'
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('orders')
+
+  // Get real dashboard statistics
+  const dashboardStats = useQuery(api.admin.getDashboardStats)
 
   const TabButton = ({ id, label, icon: Icon, isActive }: {
     id: string
@@ -42,7 +47,9 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Orders</p>
-                <p className="text-2xl font-bold text-gray-900">24</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {dashboardStats ? dashboardStats.totalOrders : '0'}
+                </p>
               </div>
               <Package className="text-stellamaris-600" size={24} />
             </div>
@@ -52,7 +59,9 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Active Users</p>
-                <p className="text-2xl font-bold text-stellamaris-600">156</p>
+                <p className="text-2xl font-bold text-stellamaris-600">
+                  {dashboardStats ? dashboardStats.activeUsers : '0'}
+                </p>
               </div>
               <Users className="text-stellamaris-600" size={24} />
             </div>
@@ -62,7 +71,9 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Products</p>
-                <p className="text-2xl font-bold text-green-600">89</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {dashboardStats ? dashboardStats.totalProducts : '0'}
+                </p>
               </div>
               <ShoppingBag className="text-green-600" size={24} />
             </div>
@@ -72,7 +83,9 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Revenue</p>
-                <p className="text-2xl font-bold text-green-600">$12.4k</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {dashboardStats ? `$${dashboardStats.revenue.toFixed(2)}` : '$0.00'}
+                </p>
               </div>
               <TrendingUp className="text-green-600" size={24} />
             </div>

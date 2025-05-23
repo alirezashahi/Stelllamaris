@@ -57,7 +57,11 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({ productId, productName })
 
       {/* Reviews List */}
       <div className="border-t border-gray-200 pt-8">
-        <ReviewList reviews={reviews} />
+        <ReviewList 
+          reviews={reviews} 
+          productId={productId}
+          productName={productName}
+        />
       </div>
     </div>
   )

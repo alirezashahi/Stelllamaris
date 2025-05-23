@@ -4,6 +4,7 @@ import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Id } from '../../../convex/_generated/dataModel';
+import ReviewSection from '../reviews/ReviewSection';
 
 const ProductDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -399,6 +400,14 @@ const ProductDetailPage: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Customer Reviews Section */}
+      <div className="mt-16">
+        <ReviewSection 
+          productId={product._id} 
+          productName={product.name} 
+        />
       </div>
     </div>
   );

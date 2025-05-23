@@ -402,6 +402,7 @@ export const getAllProducts = query({
 export const createProduct = mutation({
   args: {
     name: v.string(),
+    slug: v.string(),
     description: v.string(),
     price: v.number(),
     compareAtPrice: v.optional(v.number()),
@@ -417,14 +418,19 @@ export const createProduct = mutation({
   handler: async (ctx, args) => {
     // TODO: Add admin role check when authentication is fully implemented
     
-    // Generate slug from name
-    const slug = args.name.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)+/g, '');
+    // Validate slug uniqueness
+    const existingProduct = await ctx.db
+      .query("products")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .first();
+    
+    if (existingProduct) {
+      throw new Error(`A product with slug "${args.slug}" already exists. Please use a different slug.`);
+    }
 
     return await ctx.db.insert("products", {
       name: args.name,
-      slug: slug,
+      slug: args.slug,
       description: args.description,
       basePrice: args.price,
       salePrice: args.compareAtPrice,
@@ -451,6 +457,7 @@ export const updateProduct = mutation({
   args: {
     productId: v.id("products"),
     name: v.optional(v.string()),
+    slug: v.optional(v.string()),
     description: v.optional(v.string()),
     price: v.optional(v.number()),
     compareAtPrice: v.optional(v.number()),
@@ -470,10 +477,22 @@ export const updateProduct = mutation({
     
     if (args.name !== undefined) {
       updates.name = args.name;
-      updates.slug = args.name.toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)+/g, '');
     }
+    
+    if (args.slug !== undefined) {
+      // Check if slug is unique (exclude current product)
+      const existingProduct = await ctx.db
+        .query("products")
+        .withIndex("by_slug", (q) => q.eq("slug", args.slug!))
+        .first();
+      
+      if (existingProduct && existingProduct._id !== args.productId) {
+        throw new Error(`A product with slug "${args.slug}" already exists. Please use a different slug.`);
+      }
+      
+      updates.slug = args.slug;
+    }
+    
     if (args.description !== undefined) updates.description = args.description;
     if (args.price !== undefined) updates.basePrice = args.price;
     if (args.compareAtPrice !== undefined) updates.salePrice = args.compareAtPrice;

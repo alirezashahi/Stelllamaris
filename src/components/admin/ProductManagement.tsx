@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Id } from '../../../convex/_generated/dataModel';
 import ProductImageManager from './ProductImageManager';
+import CreateProductImageVariantManager from './CreateProductImageVariantManager';
 
 interface Product {
   _id: Id<"products">;
@@ -71,8 +72,27 @@ interface HierarchicalCategory {
   children: Category[];
 }
 
+interface TempImage {
+  id: string;
+  file: File;
+  preview: string;
+  isPrimary: boolean;
+  altText?: string;
+}
+
+interface TempVariant {
+  id: string;
+  name: string;
+  type: string;
+  value: string;
+  priceAdjustment: number;
+  stockQuantity: number;
+  images: TempImage[];
+}
+
 interface ProductFormData {
   name: string;
+  slug: string;
   description: string;
   price: string;
   compareAtPrice: string;
@@ -84,6 +104,106 @@ interface ProductFormData {
   isActive: boolean;
 }
 
+interface ProductRowProps {
+  product: Product;
+  getCategoryName: (categoryId: Id<"categories">) => string;
+  getStatusColor: (product: Product) => string;
+  getStatusText: (product: Product) => string;
+  onView: (product: Product) => void;
+  onEdit: (product: Product) => void;
+  onToggleStatus: (productId: Id<"products">, isActive: boolean) => void;
+  onDelete: (productId: Id<"products">) => void;
+}
+
+const ProductRow: React.FC<ProductRowProps> = ({
+  product,
+  getCategoryName,
+  getStatusColor,
+  getStatusText,
+  onView,
+  onEdit,
+  onToggleStatus,
+  onDelete
+}) => {
+  // Get primary image for this product
+  const productImages = useQuery(api.products.getProductImages, { productId: product._id });
+  const primaryImage = productImages?.find(img => img.isPrimary) || productImages?.[0];
+
+  return (
+    <tr key={product._id} className="hover:bg-gray-50">
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center">
+          <div className="flex-shrink-0 h-10 w-10">
+            {primaryImage ? (
+              <img
+                src={primaryImage.imageUrl}
+                alt={primaryImage.altText || product.name}
+                className="h-10 w-10 rounded-lg object-cover"
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-lg bg-gray-200 flex items-center justify-center">
+                <Package className="h-5 w-5 text-gray-400" />
+              </div>
+            )}
+          </div>
+          <div className="ml-4">
+            <div className="text-sm font-medium text-gray-900">{product.name}</div>
+            <div className="text-sm text-gray-500 flex items-center">
+              <Star className="h-3 w-3 text-yellow-400 mr-1" />
+              {product.sustainabilityScore ? product.sustainabilityScore.toString() : 'N/A'}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {getCategoryName(product.categoryId)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-900">${product.basePrice.toFixed(2)}</div>
+        {product.salePrice && (
+          <div className="text-sm text-gray-500 line-through">
+            ${product.salePrice.toFixed(2)}
+          </div>
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {product.totalStock}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(product)}`}>
+          {getStatusText(product)}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+        <button
+          onClick={() => onView(product)}
+          className="text-stellamaris-600 hover:text-stellamaris-700"
+        >
+          <Eye className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onEdit(product)}
+          className="text-blue-600 hover:text-blue-700"
+        >
+          <Edit2 className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onToggleStatus(product._id, product.status !== 'active')}
+          className={`${product.status === 'active' ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}`}
+        >
+          <Package className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onDelete(product._id)}
+          className="text-red-600 hover:text-red-700"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </td>
+    </tr>
+  );
+};
+
 const ProductManagement: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -92,9 +212,12 @@ const ProductManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [tempImages, setTempImages] = useState<TempImage[]>([]);
+  const [tempVariants, setTempVariants] = useState<TempVariant[]>([]);
   
   const [productFormData, setProductFormData] = useState<ProductFormData>({
     name: '',
+    slug: '',
     description: '',
     price: '',
     compareAtPrice: '',
@@ -116,6 +239,11 @@ const ProductManagement: React.FC = () => {
   const products = useQuery(api.products.getAllProducts);
   const hierarchicalCategories = useQuery(api.categories.getAllCategoriesHierarchical);
   const productStats = useQuery(api.products.getProductStats);
+  
+  // Helper to get primary image for a product
+  const getProductPrimaryImage = (productId: Id<"products">) => {
+    return useQuery(api.products.getProductImages, { productId });
+  };
 
   // Mutations
   const createProduct = useMutation(api.products.createProduct);
@@ -124,6 +252,7 @@ const ProductManagement: React.FC = () => {
   const createCategory = useMutation(api.categories.createCategory);
   const generateUploadUrl = useMutation(api.fileUpload.generateUploadUrl);
   const saveProductImage = useMutation(api.fileUpload.saveProductImage);
+  const createProductVariant = useMutation(api.products.createProductVariant);
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,6 +263,7 @@ const ProductManagement: React.FC = () => {
         await updateProduct({
           productId: editingProduct._id,
           name: productFormData.name,
+          slug: productFormData.slug,
           description: productFormData.description,
           price: parseFloat(productFormData.price),
           compareAtPrice: productFormData.compareAtPrice ? parseFloat(productFormData.compareAtPrice) : undefined,
@@ -145,8 +275,9 @@ const ProductManagement: React.FC = () => {
         });
       } else {
         // Create new product
-        await createProduct({
+        const productId = await createProduct({
           name: productFormData.name,
+          slug: productFormData.slug,
           description: productFormData.description,
           price: parseFloat(productFormData.price),
           compareAtPrice: productFormData.compareAtPrice ? parseFloat(productFormData.compareAtPrice) : undefined,
@@ -156,14 +287,97 @@ const ProductManagement: React.FC = () => {
           tags: productFormData.tags.split(',').map(t => t.trim()).filter(t => t),
           stockQuantity: parseInt(productFormData.stockQuantity),
           isActive: productFormData.isActive,
-          images: [], // Will be added when file upload is implemented
+          images: [], // Will be uploaded after product creation
         });
+
+        // Upload general images
+        await uploadTempImages(productId, tempImages);
+
+        // Create variants and upload their images
+        await createTempVariants(productId, tempVariants);
       }
       
       setShowCreateForm(false);
       resetProductForm();
     } catch (error) {
       console.error('Failed to save product:', error);
+      alert('Failed to save product. Please try again.');
+    }
+  };
+
+  const uploadTempImages = async (productId: Id<"products">, images: TempImage[]) => {
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i];
+      try {
+        // Generate upload URL
+        const uploadUrl = await generateUploadUrl();
+        
+        // Upload file
+        const result = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": image.file.type },
+          body: image.file,
+        });
+        
+        const { storageId } = await result.json();
+        
+        // Save image info to database
+        await saveProductImage({
+          productId,
+          storageId,
+          altText: image.altText || `${productFormData.name} image ${i + 1}`,
+          isPrimary: image.isPrimary,
+        });
+      } catch (error) {
+        console.error(`Failed to upload image ${i + 1}:`, error);
+      }
+    }
+  };
+
+  const createTempVariants = async (productId: Id<"products">, variants: TempVariant[]) => {
+    for (const variant of variants) {
+      try {
+        // Create variant
+        const variantId = await createProductVariant({
+          productId,
+          name: variant.name,
+          type: variant.type,
+          value: variant.value,
+          priceAdjustment: variant.priceAdjustment,
+          stockQuantity: variant.stockQuantity,
+        });
+
+        // Upload variant images
+        for (let i = 0; i < variant.images.length; i++) {
+          const image = variant.images[i];
+          try {
+            // Generate upload URL
+            const uploadUrl = await generateUploadUrl();
+            
+            // Upload file
+            const result = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": image.file.type },
+              body: image.file,
+            });
+            
+            const { storageId } = await result.json();
+            
+            // Save image info to database
+            await saveProductImage({
+              productId,
+              variantId,
+              storageId,
+              altText: image.altText || `${variant.name} image ${i + 1}`,
+              isPrimary: image.isPrimary,
+            });
+          } catch (error) {
+            console.error(`Failed to upload variant image ${i + 1}:`, error);
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to create variant ${variant.name}:`, error);
+      }
     }
   };
 
@@ -203,9 +417,21 @@ const ProductManagement: React.FC = () => {
     }
   };
 
+  // Generate slug from name
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  };
+
   const resetProductForm = () => {
     setProductFormData({
       name: '',
+      slug: '',
       description: '',
       price: '',
       compareAtPrice: '',
@@ -216,6 +442,8 @@ const ProductManagement: React.FC = () => {
       stockQuantity: '0',
       isActive: true,
     });
+    setTempImages([]);
+    setTempVariants([]);
     setEditingProduct(null);
   };
 
@@ -422,84 +650,36 @@ const ProductManagement: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredProducts?.map((product) => (
-                <tr key={product._id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-lg bg-gray-200 flex items-center justify-center">
-                          <Package className="h-5 w-5 text-gray-400" />
-                        </div>
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                        <div className="text-sm text-gray-500 flex items-center">
-                          <Star className="h-3 w-3 text-yellow-400 mr-1" />
-                          {product.sustainabilityScore ? product.sustainabilityScore.toString() : 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {getCategoryName(product.categoryId)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">${product.basePrice.toFixed(2)}</div>
-                    {product.salePrice && (
-                      <div className="text-sm text-gray-500 line-through">
-                        ${product.salePrice.toFixed(2)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.totalStock}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(product)}`}>
-                      {getStatusText(product)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button
-                      onClick={() => setSelectedProduct(product)}
-                      className="text-stellamaris-600 hover:text-stellamaris-700"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingProduct(product);
-                        setProductFormData({
-                          name: product.name,
-                          description: product.description,
-                          price: product.basePrice.toString(),
-                          compareAtPrice: product.salePrice?.toString() || '',
-                          categoryId: product.categoryId,
-                          sustainabilityScore: product.sustainabilityScore?.toString() || '5',
-                          materials: product.material,
-                          tags: '',
-                          stockQuantity: product.totalStock.toString(),
-                          isActive: product.status === 'active',
-                        });
-                        setShowCreateForm(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-700"
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleUpdateProduct(product._id, { isActive: product.status !== 'active' })}
-                      className={`${product.status === 'active' ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}`}
-                    >
-                      <Package className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProduct(product._id)}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
+                <ProductRow
+                  key={product._id}
+                  product={product}
+                  getCategoryName={getCategoryName}
+                  getStatusColor={getStatusColor}
+                  getStatusText={getStatusText}
+                  onView={(p) => setSelectedProduct(p)}
+                  onEdit={(p) => {
+                    setEditingProduct(p);
+                    setProductFormData({
+                      name: p.name,
+                      slug: p.slug,
+                      description: p.description,
+                      price: p.basePrice.toString(),
+                      compareAtPrice: p.salePrice?.toString() || '',
+                      categoryId: p.categoryId,
+                      sustainabilityScore: p.sustainabilityScore?.toString() || '5',
+                      materials: p.material,
+                      tags: '',
+                      stockQuantity: p.totalStock.toString(),
+                      isActive: p.status === 'active',
+                    });
+                    // Clear temp data when editing existing product
+                    setTempImages([]);
+                    setTempVariants([]);
+                    setShowCreateForm(true);
+                  }}
+                  onToggleStatus={(id, isActive) => handleUpdateProduct(id, { isActive })}
+                  onDelete={(id) => handleDeleteProduct(id)}
+                />
               ))}
             </tbody>
           </table>
@@ -524,11 +704,35 @@ const ProductManagement: React.FC = () => {
                     type="text"
                     required
                     value={productFormData.name}
-                    onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })}
+                    onChange={(e) => {
+                      const newName = e.target.value;
+                      setProductFormData({ 
+                        ...productFormData, 
+                        name: newName,
+                        slug: generateSlug(newName)
+                      });
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product Slug *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={productFormData.slug}
+                    onChange={(e) => setProductFormData({ ...productFormData, slug: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                    placeholder="auto-generated-from-name"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">URL-friendly version of the product name</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Category *
@@ -654,10 +858,16 @@ const ProductManagement: React.FC = () => {
               </div>
 
               {/* Image Upload Section */}
-              {editingProduct && (
+              {editingProduct ? (
                 <ProductImageManager
                   productId={editingProduct._id}
                   productName={editingProduct.name}
+                />
+              ) : (
+                <CreateProductImageVariantManager
+                  onImagesChange={setTempImages}
+                  onVariantsChange={setTempVariants}
+                  productName={productFormData.name || 'New Product'}
                 />
               )}
 

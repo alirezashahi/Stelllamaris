@@ -143,4 +143,25 @@ export const updateProductImageOrder = mutation({
     await ctx.db.patch(args.imageId, updates);
     return null;
   },
+});
+
+/**
+ * Save uploaded file as review image
+ */
+export const saveReviewImage = mutation({
+  args: {
+    storageId: v.id("_storage"),
+    altText: v.optional(v.string()),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    // Get the file URL
+    const fileUrl = await ctx.storage.getUrl(args.storageId);
+    
+    if (!fileUrl) {
+      throw new Error("Failed to get file URL");
+    }
+
+    return fileUrl;
+  },
 }); 

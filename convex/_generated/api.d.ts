@@ -14,6 +14,7 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as addresses from "../addresses.js";
+import type * as admin from "../admin.js";
 import type * as cart from "../cart.js";
 import type * as categories from "../categories.js";
 import type * as fileUpload from "../fileUpload.js";
@@ -38,6 +39,7 @@ import type * as wishlist from "../wishlist.js";
  */
 declare const fullApi: ApiFromModules<{
   addresses: typeof addresses;
+  admin: typeof admin;
   cart: typeof cart;
   categories: typeof categories;
   fileUpload: typeof fileUpload;

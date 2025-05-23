@@ -242,33 +242,7 @@ export default defineSchema({
     quantity: v.number(),
     unitPrice: v.number(),
     totalPrice: v.number(),
-  }).index("by_order_id", ["orderId"]),
-
-  // Product reviews
-  reviews: defineTable({
-    productId: v.id("products"),
-    userId: v.id("users"),
-    orderId: v.optional(v.id("orders")), // Link to verified purchase
-    rating: v.number(), // 1-5 stars
-    title: v.optional(v.string()),
-    comment: v.optional(v.string()),
-    isVerifiedPurchase: v.boolean(),
-    isApproved: v.boolean(),
-    adminResponse: v.optional(v.string()),
-  })
-    .index("by_product_id", ["productId"])
-    .index("by_user_id", ["userId"])
-    .index("by_approved", ["isApproved"]),
-
-  // Review images
-  reviewImages: defineTable({
-    reviewId: v.id("reviews"),
-    imageUrl: v.string(),
-    altText: v.optional(v.string()),
-    sortOrder: v.number(),
-  }).index("by_review_id", ["reviewId"]),
-
-  // Promo codes
+  }).index("by_order_id", ["orderId"]),  // Product reviews  reviews: defineTable({    productId: v.id("products"),    userId: v.id("users"),    orderId: v.optional(v.id("orders")), // Link to verified purchase    rating: v.number(), // 1-5 stars    title: v.optional(v.string()),    comment: v.optional(v.string()),    isVerifiedPurchase: v.boolean(),    isApproved: v.boolean(),    adminResponse: v.optional(v.string()),  })    .index("by_product_id", ["productId"])    .index("by_user_id", ["userId"])    .index("by_approved", ["isApproved"]),  // Review images  reviewImages: defineTable({    reviewId: v.id("reviews"),    imageUrl: v.string(),    altText: v.optional(v.string()),    sortOrder: v.number(),  }).index("by_review_id", ["reviewId"]),  // Promo codes
   promoCodes: defineTable({
     code: v.string(),
     type: v.union(v.literal("percentage"), v.literal("fixed_amount"), v.literal("free_shipping")),
