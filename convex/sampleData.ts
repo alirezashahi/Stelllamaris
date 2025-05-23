@@ -273,4 +273,78 @@ export const clearData = mutation({
     
     return null;
   },
+});
+
+/**
+ * Create predefined promo codes
+ */
+export const createPromoCodes = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const oneYearFromNow = now + (365 * 24 * 60 * 60 * 1000); // 1 year validity
+
+    const predefinedCodes = [
+      {
+        code: "WELCOME10",
+        type: "percentage" as const,
+        value: 10,
+        validFrom: now,
+        validUntil: oneYearFromNow,
+        minimumOrderAmount: 50,
+        maxUsagePerUser: 1,
+        maxUsageCount: 1000,
+      },
+      {
+        code: "SAVE15",
+        type: "percentage" as const,
+        value: 15,
+        validFrom: now,
+        validUntil: oneYearFromNow,
+        minimumOrderAmount: 100,
+        maxUsageCount: 500,
+      },
+      {
+        code: "FIRST20",
+        type: "percentage" as const,
+        value: 20,
+        validFrom: now,
+        validUntil: oneYearFromNow,
+        minimumOrderAmount: 150,
+        maxUsagePerUser: 1,
+        maxUsageCount: 200,
+      },
+      {
+        code: "STELLAMARIS",
+        type: "percentage" as const,
+        value: 25,
+        validFrom: now,
+        validUntil: oneYearFromNow,
+        minimumOrderAmount: 200,
+        maxUsageCount: 100,
+      },
+    ];
+
+    for (const codeData of predefinedCodes) {
+      // Check if already exists
+      const existing = await ctx.db
+        .query("promoCodes")
+        .withIndex("by_code", (q) => q.eq("code", codeData.code))
+        .unique();
+
+      if (!existing) {
+        await ctx.db.insert("promoCodes", {
+          ...codeData,
+          isActive: true,
+          currentUsageCount: 0,
+        });
+        console.log(`Created promo code: ${codeData.code}`);
+      } else {
+        console.log(`Promo code already exists: ${codeData.code}`);
+      }
+    }
+
+    return null;
+  },
 }); 

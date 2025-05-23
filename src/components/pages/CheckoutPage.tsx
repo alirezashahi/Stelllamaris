@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCheckout, type ShippingInfo, type PaymentInfo } from '../../contexts/CheckoutContext';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
+import PromoCodeInput from '../checkout/PromoCodeInput';
 
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -37,9 +38,12 @@ const CheckoutPage: React.FC = () => {
   const [showSavedAddresses, setShowSavedAddresses] = useState(false);
   const [showSavedPaymentMethods, setShowSavedPaymentMethods] = useState(false);
   const [isUsingExistingPaymentMethod, setIsUsingExistingPaymentMethod] = useState(false);
-  const [discountCode, setDiscountCode] = useState('');
-  const [discountPercent, setDiscountPercent] = useState(0);
-  const [discountError, setDiscountError] = useState('');
+  const [appliedPromoCode, setAppliedPromoCode] = useState<{
+    code: string;
+    discountAmount: number;
+    type: 'percentage' | 'fixed_amount' | 'free_shipping';
+    promoCodeId: string;
+  } | null>(null);
 
   // Fetch saved addresses and payment methods for authenticated users
   const savedAddresses = useQuery(
@@ -56,56 +60,6 @@ const CheckoutPage: React.FC = () => {
   const createOrder = useMutation(api.orders.createOrder);
   const addAddress = useMutation(api.addresses.addAddress);
   const addPaymentMethod = useMutation(api.paymentMethods.addPaymentMethod);
-
-  // Apply discount function
-  const handleApplyDiscount = () => {
-    const code = discountCode.toUpperCase();
-    setDiscountError('');
-    
-    // Simple discount codes - you can enhance this with backend validation
-    const discountCodes = {
-      'WELCOME10': 10,
-      'SAVE15': 15,
-      'FIRST20': 20,
-      'STELLAMARIS': 25
-    };
-    
-    if (discountCodes[code as keyof typeof discountCodes]) {
-      setDiscountPercent(discountCodes[code as keyof typeof discountCodes]);
-    } else {
-      setDiscountError('Invalid discount code');
-      setDiscountPercent(0);
-    }
-  };
-
-  // Handle saved address selection
-  const handleSelectSavedAddress = (address: any) => {
-    updateShippingInfo({
-      firstName: address.firstName,
-      lastName: address.lastName,
-      addressLine1: address.addressLine1,
-      addressLine2: address.addressLine2 || '',
-      city: address.city,
-      state: address.state,
-      zipCode: address.zipCode,
-      country: address.country
-    });
-    setShowSavedAddresses(false);
-    setSaveNewAddress(false); // Don't save if using existing address
-  };
-
-  // Handle saved payment method selection
-  const handleSelectSavedPaymentMethod = (paymentMethod: any) => {
-    updatePaymentInfo({
-      cardNumber: `**** **** **** ${paymentMethod.last4Digits}`,
-      expiryDate: `${paymentMethod.expiryMonth}/${paymentMethod.expiryYear}`,
-      nameOnCard: paymentMethod.nameOnCard,
-      cvv: '' // CVV is never saved for security
-    });
-    setShowSavedPaymentMethods(false);
-    setSaveNewPaymentMethod(false); // Don't save if using existing payment method
-    setIsUsingExistingPaymentMethod(true); // Flag that we're using an existing method
-  };
 
   // Populate user data if authenticated (but don't overwrite existing data)
   useEffect(() => {
@@ -180,7 +134,7 @@ const CheckoutPage: React.FC = () => {
   }, [paymentInfo.cardNumber]);
 
   const subtotal = getTotalPrice();
-  const discountAmount = Math.round(subtotal * (discountPercent / 100) * 100) / 100;
+  const discountAmount = appliedPromoCode?.discountAmount || 0;
   const discountedSubtotal = subtotal - discountAmount;
   const shipping = discountedSubtotal > 100 ? 0 : 15;
   const tax = discountedSubtotal * 0.08; // 8% tax
@@ -316,6 +270,35 @@ const CheckoutPage: React.FC = () => {
       console.error('Order processing failed:', error);
       setIsProcessing(false);
     }
+  };
+
+  // Handle saved address selection
+  const handleSelectSavedAddress = (address: any) => {
+    updateShippingInfo({
+      firstName: address.firstName,
+      lastName: address.lastName,
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2 || '',
+      city: address.city,
+      state: address.state,
+      zipCode: address.zipCode,
+      country: address.country
+    });
+    setShowSavedAddresses(false);
+    setSaveNewAddress(false); // Don't save if using existing address
+  };
+
+  // Handle saved payment method selection
+  const handleSelectSavedPaymentMethod = (paymentMethod: any) => {
+    updatePaymentInfo({
+      cardNumber: `**** **** **** ${paymentMethod.last4Digits}`,
+      expiryDate: `${paymentMethod.expiryMonth}/${paymentMethod.expiryYear}`,
+      nameOnCard: paymentMethod.nameOnCard,
+      cvv: '' // CVV is never saved for security
+    });
+    setShowSavedPaymentMethods(false);
+    setSaveNewPaymentMethod(false); // Don't save if using existing payment method
+    setIsUsingExistingPaymentMethod(true); // Flag that we're using an existing method
   };
 
   if (cartItems.length === 0) {
@@ -836,6 +819,19 @@ const CheckoutPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Promo Code Section */}
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                    <Percent size={16} className="mr-2" />
+                    Promo Code
+                  </h4>
+                  <PromoCodeInput
+                    subtotal={subtotal}
+                    onPromoCodeApplied={setAppliedPromoCode}
+                    appliedPromoCode={appliedPromoCode}
+                  />
+                </div>
+
                 <div className="flex space-x-4">
                   <button
                     onClick={() => setCurrentStep(2)}
@@ -859,41 +855,6 @@ const CheckoutPage: React.FC = () => {
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-sm p-6 sticky top-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h3>
-              
-              {/* Discount Code Section */}
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-                  <Percent size={16} className="mr-2" />
-                  Discount Code
-                </h4>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={discountCode}
-                    onChange={(e) => setDiscountCode(e.target.value)}
-                    placeholder="Enter code"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyDiscount}
-                    className="bg-stellamaris-600 text-white px-4 py-2 rounded-md hover:bg-stellamaris-700 transition-colors text-sm font-medium"
-                  >
-                    Apply
-                  </button>
-                </div>
-                {discountError && (
-                  <p className="text-red-600 text-xs mt-2">{discountError}</p>
-                )}
-                {discountPercent > 0 && (
-                  <p className="text-green-600 text-xs mt-2">
-                    ✅ {discountPercent}% discount applied!
-                  </p>
-                )}
-                <div className="mt-2 text-xs text-gray-500">
-                  <p>Try: WELCOME10, SAVE15, FIRST20, STELLAMARIS</p>
-                </div>
-              </div>
               
               {/* Cart Items */}
               <div className="space-y-3 mb-4">
@@ -926,10 +887,10 @@ const CheckoutPage: React.FC = () => {
                   <span className="text-gray-600">Subtotal</span>
                   <span className="text-gray-900">${subtotal.toFixed(2)}</span>
                 </div>
-                {discountPercent > 0 && (
+                {appliedPromoCode && appliedPromoCode.discountAmount > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-green-600">Discount ({discountPercent}%)</span>
-                    <span className="text-green-600">-${discountAmount.toFixed(2)}</span>
+                    <span className="text-green-600">Discount ({appliedPromoCode.code})</span>
+                    <span className="text-green-600">-${appliedPromoCode.discountAmount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
