@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom Stellamaris Brand Styles */
+@layer components {
+  .stellamaris-gradient {
+    @apply bg-gradient-to-r from-stellamaris-600 to-stellamaris-400;
+  }
+  
+  .stellamaris-text-gradient {
+    @apply bg-gradient-to-r from-stellamaris-600 to-stellamaris-400 bg-clip-text text-transparent;
+  }
+  
+  .charity-impact-card {
+    @apply bg-gradient-to-br from-sage-50 to-sage-100 border border-sage-200;
+  }
+  
+  .sustainability-badge {
+    @apply bg-gradient-to-r from-green-600 to-green-500 text-white px-2 py-1 rounded-full text-xs font-medium;
+  }
+
+  .product-card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-lg hover:border-stellamaris-300;
+  }
+
+  .btn-primary {
+    @apply bg-stellamaris-600 hover:bg-stellamaris-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-sage-600 hover:bg-sage-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200;
+  }
+
+  .btn-outline {
+    @apply border border-stellamaris-600 text-stellamaris-600 hover:bg-stellamaris-600 hover:text-white font-medium py-2 px-4 rounded-md transition-all duration-200;
+  }
+} 
