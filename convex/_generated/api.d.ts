@@ -15,6 +15,8 @@ import type {
 } from "convex/server";
 import type * as addresses from "../addresses.js";
 import type * as cart from "../cart.js";
+import type * as categories from "../categories.js";
+import type * as fileUpload from "../fileUpload.js";
 import type * as http from "../http.js";
 import type * as orders from "../orders.js";
 import type * as paymentMethods from "../paymentMethods.js";
@@ -22,6 +24,7 @@ import type * as products from "../products.js";
 import type * as promoCodes from "../promoCodes.js";
 import type * as reviews from "../reviews.js";
 import type * as sampleData from "../sampleData.js";
+import type * as sampleVariantData from "../sampleVariantData.js";
 import type * as users from "../users.js";
 import type * as wishlist from "../wishlist.js";
 
@@ -36,6 +39,8 @@ import type * as wishlist from "../wishlist.js";
 declare const fullApi: ApiFromModules<{
   addresses: typeof addresses;
   cart: typeof cart;
+  categories: typeof categories;
+  fileUpload: typeof fileUpload;
   http: typeof http;
   orders: typeof orders;
   paymentMethods: typeof paymentMethods;
@@ -43,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   promoCodes: typeof promoCodes;
   reviews: typeof reviews;
   sampleData: typeof sampleData;
+  sampleVariantData: typeof sampleVariantData;
   users: typeof users;
   wishlist: typeof wishlist;
 }>;

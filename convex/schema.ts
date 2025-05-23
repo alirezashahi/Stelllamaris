@@ -115,11 +115,15 @@ export default defineSchema({
   // Product images
   productImages: defineTable({
     productId: v.id("products"),
+    variantId: v.optional(v.id("productVariants")), // Associate with specific variant (null for general product images)
     imageUrl: v.string(),
     altText: v.optional(v.string()),
     sortOrder: v.number(),
     isPrimary: v.boolean(),
-  }).index("by_product_id", ["productId"]),
+  })
+    .index("by_product_id", ["productId"])
+    .index("by_variant_id", ["variantId"])
+    .index("by_product_and_variant", ["productId", "variantId"]),
 
   // Product variants (colors, sizes, etc.)
   productVariants: defineTable({

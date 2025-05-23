@@ -6,71 +6,143 @@ export const addSampleData = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     // Clear existing data (optional)
-    // Note: In production, you wouldn't want to clear data like this
+    console.log("Adding sample data...");
 
-    // Add Categories
+    // Create top-level categories first
+    const bagsCategory = await ctx.db.insert("categories", {
+      name: "Bags",
+      slug: "bags",
+      description: "Premium handbags and accessories for every occasion",
+      imageUrl: "https://via.placeholder.com/300x200",
+      isActive: true,
+      sortOrder: 1,
+    });
+
+    const shoesCategory = await ctx.db.insert("categories", {
+      name: "Shoes",
+      slug: "shoes", 
+      description: "Sustainable footwear collection",
+      imageUrl: "https://via.placeholder.com/300x200",
+      isActive: true,
+      sortOrder: 2,
+    });
+
+    const accessoriesCategory = await ctx.db.insert("categories", {
+      name: "Accessories",
+      slug: "accessories",
+      description: "Eco-friendly accessories to complete your look",
+      imageUrl: "https://via.placeholder.com/300x200", 
+      isActive: true,
+      sortOrder: 3,
+    });
+
+    // Create subcategories for Bags
     const toteCategory = await ctx.db.insert("categories", {
       name: "Tote Bags",
       slug: "tote-bags",
       description: "Spacious and versatile tote bags perfect for everyday use",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: bagsCategory,
       isActive: true,
       sortOrder: 1,
-      imageUrl: "https://via.placeholder.com/300x200",
-    });
-
-    const clutchCategory = await ctx.db.insert("categories", {
-      name: "Clutches",
-      slug: "clutches",
-      description: "Elegant clutches for special occasions",
-      isActive: true,
-      sortOrder: 2,
-      imageUrl: "https://via.placeholder.com/300x200",
     });
 
     const crossbodyCategory = await ctx.db.insert("categories", {
       name: "Crossbody Bags",
       slug: "crossbody-bags",
-      description: "Hands-free convenience with style",
+      description: "Hands-free convenience with modern style",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: bagsCategory,
+      isActive: true,
+      sortOrder: 2,
+    });
+
+    const clutchCategory = await ctx.db.insert("categories", {
+      name: "Clutch Bags",
+      slug: "clutch-bags",
+      description: "Elegant evening bags for special occasions",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: bagsCategory,
       isActive: true,
       sortOrder: 3,
+    });
+
+    const backpackCategory = await ctx.db.insert("categories", {
+      name: "Backpacks",
+      slug: "backpacks",
+      description: "Functional and stylish backpacks for work and travel",
       imageUrl: "https://via.placeholder.com/300x200",
-    });
-
-    // Add Charity Organizations
-    const animalCharity = await ctx.db.insert("charityOrganizations", {
-      name: "Local Animal Shelter",
-      description: "Supporting abandoned and rescued animals in our community",
-      type: "animal_shelter",
+      parentCategoryId: bagsCategory,
       isActive: true,
-      totalDonationsReceived: 15000,
-      website: "https://example-animal-shelter.org",
-      logoUrl: "https://via.placeholder.com/100x100",
+      sortOrder: 4,
     });
 
-    const environmentCharity = await ctx.db.insert("charityOrganizations", {
-      name: "Green Earth Foundation",
-      description: "Fighting climate change and protecting our environment",
-      type: "environmental",
+    // Create subcategories for Shoes
+    const sneakersCategory = await ctx.db.insert("categories", {
+      name: "Sneakers",
+      slug: "sneakers",
+      description: "Sustainable sneakers for active lifestyles",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: shoesCategory,
       isActive: true,
-      totalDonationsReceived: 8500,
-      website: "https://example-green-earth.org",
-      logoUrl: "https://via.placeholder.com/100x100",
+      sortOrder: 1,
     });
 
-    // Add Sample Products
+    const heelsCategory = await ctx.db.insert("categories", {
+      name: "Heels",
+      slug: "heels",
+      description: "Elegant heels made from eco-friendly materials",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: shoesCategory,
+      isActive: true,
+      sortOrder: 2,
+    });
+
+    const flatsCategory = await ctx.db.insert("categories", {
+      name: "Flats",
+      slug: "flats",
+      description: "Comfortable flats for everyday wear",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: shoesCategory,
+      isActive: true,
+      sortOrder: 3,
+    });
+
+    // Create subcategories for Accessories
+    const jewelryCategory = await ctx.db.insert("categories", {
+      name: "Jewelry",
+      slug: "jewelry",
+      description: "Sustainable jewelry made from recycled materials",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: accessoriesCategory,
+      isActive: true,
+      sortOrder: 1,
+    });
+
+    const scarvesCategory = await ctx.db.insert("categories", {
+      name: "Scarves",
+      slug: "scarves", 
+      description: "Luxurious scarves from organic and sustainable fabrics",
+      imageUrl: "https://via.placeholder.com/300x200",
+      parentCategoryId: accessoriesCategory,
+      isActive: true,
+      sortOrder: 2,
+    });
+
+    // Create products with proper category assignments
     const product1 = await ctx.db.insert("products", {
-      name: "The Signature Tote",
-      slug: "signature-tote",
-      description: "Our flagship tote bag, handcrafted from premium sustainable leather. This spacious yet elegant bag is perfect for the modern professional who values both style and ethics. Features multiple compartments, a secure zipper closure, and reinforced handles for everyday durability.",
-      shortDescription: "Handcrafted premium tote with sustainable materials",
+      name: "The Sustainability Tote",
+      slug: "sustainability-tote",
+      description: "Our flagship tote bag made from 100% recycled ocean plastic. This spacious bag features multiple compartments and is perfect for work, shopping, or travel. Each purchase helps remove plastic waste from our oceans.",
+      shortDescription: "Spacious tote made from recycled ocean plastic",
       basePrice: 1250,
       sku: "ST-001",
-      material: "Sustainable Vegan Leather",
-      dimensions: "15\" W x 12\" H x 6\" D",
-      weight: 2.5,
-      careInstructions: "Wipe clean with a damp cloth. Avoid direct sunlight for extended periods.",
-      sustainabilityScore: 9,
-      sustainableFeatures: ["Vegan leather", "Recycled lining", "Carbon-neutral shipping"],
+      material: "Recycled Ocean Plastic",
+      dimensions: "15\" W x 12\" H x 6\" D", 
+      weight: 1.8,
+      careInstructions: "Wipe clean with damp cloth. Air dry only.",
+      sustainabilityScore: 10,
+      sustainableFeatures: ["100% recycled ocean plastic", "Carbon neutral shipping", "Zero waste packaging"],
       categoryId: toteCategory,
       status: "active",
       isFeatured: true,
@@ -168,7 +240,7 @@ export const addSampleData = mutation({
       careInstructions: "Machine washable on gentle cycle. Air dry.",
       sustainabilityScore: 10,
       sustainableFeatures: ["100% recycled canvas", "Solar-powered production", "Zero waste packaging"],
-      categoryId: toteCategory,
+      categoryId: backpackCategory,
       status: "active",
       isFeatured: false,
       isNewArrival: true,
@@ -203,56 +275,7 @@ export const addSampleData = mutation({
       averageRating: 0,
     });
 
-    // Add Product Images
-    const productImages = [
-      // Signature Tote Images
-      { productId: product1, imageUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400", altText: "The Signature Tote - Front View", sortOrder: 1, isPrimary: true },
-      { productId: product1, imageUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400", altText: "The Signature Tote - Side View", sortOrder: 2, isPrimary: false },
-      
-      // Classic Clutch Images
-      { productId: product2, imageUrl: "https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=400", altText: "The Classic Clutch - Front View", sortOrder: 1, isPrimary: true },
-      { productId: product2, imageUrl: "https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=400", altText: "The Classic Clutch - Interior", sortOrder: 2, isPrimary: false },
-      
-      // Everyday Crossbody Images
-      { productId: product3, imageUrl: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=400", altText: "The Everyday Crossbody - Front View", sortOrder: 1, isPrimary: true },
-      { productId: product3, imageUrl: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=400", altText: "The Everyday Crossbody - Worn", sortOrder: 2, isPrimary: false },
-      
-      // City Satchel Images
-      { productId: product4, imageUrl: "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=400", altText: "The City Satchel - Front View", sortOrder: 1, isPrimary: true },
-      
-      // Travel Companion Images
-      { productId: product5, imageUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400", altText: "The Travel Companion - Front View", sortOrder: 1, isPrimary: true },
-      
-      // Mini Bag Images
-      { productId: product6, imageUrl: "https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=400", altText: "The Mini Bag - Front View", sortOrder: 1, isPrimary: true },
-    ];
-
-    for (const image of productImages) {
-      await ctx.db.insert("productImages", image);
-    }
-
-    // Add Product Variants (colors/sizes)
-    const variants = [
-      // Signature Tote Variants
-      { productId: product1, name: "Black", type: "color", value: "Black", priceAdjustment: 0, stockQuantity: 10, sku: "ST-001-BLK" },
-      { productId: product1, name: "Brown", type: "color", value: "Brown", priceAdjustment: 0, stockQuantity: 8, sku: "ST-001-BRN" },
-      { productId: product1, name: "Navy", type: "color", value: "Navy", priceAdjustment: 0, stockQuantity: 7, sku: "ST-001-NVY" },
-      
-      // Classic Clutch Variants
-      { productId: product2, name: "Black", type: "color", value: "Black", priceAdjustment: 0, stockQuantity: 15, sku: "CC-001-BLK" },
-      { productId: product2, name: "Gold", type: "color", value: "Gold", priceAdjustment: 50, stockQuantity: 10, sku: "CC-001-GLD" },
-      { productId: product2, name: "Silver", type: "color", value: "Silver", priceAdjustment: 50, stockQuantity: 5, sku: "CC-001-SLV" },
-      
-      // Everyday Crossbody Variants
-      { productId: product3, name: "Tan", type: "color", value: "Tan", priceAdjustment: 0, stockQuantity: 10, sku: "EC-001-TAN" },
-      { productId: product3, name: "Black", type: "color", value: "Black", priceAdjustment: 0, stockQuantity: 6, sku: "EC-001-BLK" },
-      { productId: product3, name: "Forest Green", type: "color", value: "Forest Green", priceAdjustment: 0, stockQuantity: 4, sku: "EC-001-GRN" },
-    ];
-
-    for (const variant of variants) {
-      await ctx.db.insert("productVariants", variant);
-    }
-
+    console.log("Sample data added successfully!");
     return null;
   },
 });

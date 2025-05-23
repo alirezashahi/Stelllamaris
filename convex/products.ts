@@ -357,4 +357,398 @@ export const getRelatedProducts = query({
 
     return productsWithImages;
   },
+});
+
+/**
+ * Get all products for admin management
+ */
+export const getAllProducts = query({
+  args: {},
+  returns: v.array(v.object({
+    _id: v.id("products"),
+    _creationTime: v.number(),
+    name: v.string(),
+    slug: v.string(),
+    description: v.string(),
+    shortDescription: v.optional(v.string()),
+    basePrice: v.number(),
+    salePrice: v.optional(v.number()),
+    sku: v.string(),
+    categoryId: v.id("categories"),
+    sustainabilityScore: v.optional(v.number()),
+    sustainableFeatures: v.optional(v.array(v.string())),
+    material: v.string(),
+    dimensions: v.optional(v.string()),
+    weight: v.optional(v.number()),
+    careInstructions: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("draft"), v.literal("archived")),
+    totalStock: v.number(),
+    lowStockThreshold: v.number(),
+    totalSales: v.number(),
+    averageRating: v.optional(v.number()),
+    totalReviews: v.number(),
+    isFeatured: v.boolean(),
+    isNewArrival: v.boolean(),
+  })),
+  handler: async (ctx) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    return await ctx.db.query("products").order("desc").collect();
+  },
+});
+
+/**
+ * Create a new product (admin only)
+ */
+export const createProduct = mutation({
+  args: {
+    name: v.string(),
+    description: v.string(),
+    price: v.number(),
+    compareAtPrice: v.optional(v.number()),
+    categoryId: v.id("categories"),
+    sustainabilityScore: v.number(),
+    materials: v.array(v.string()),
+    tags: v.array(v.string()),
+    stockQuantity: v.number(),
+    isActive: v.boolean(),
+    images: v.array(v.string()),
+  },
+  returns: v.id("products"),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    // Generate slug from name
+    const slug = args.name.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+
+    return await ctx.db.insert("products", {
+      name: args.name,
+      slug: slug,
+      description: args.description,
+      basePrice: args.price,
+      salePrice: args.compareAtPrice,
+      categoryId: args.categoryId,
+      sustainabilityScore: args.sustainabilityScore,
+      material: args.materials.join(', '), // Convert array to string
+      totalStock: args.stockQuantity,
+      status: args.isActive ? "active" : "draft",
+      sku: `SKU-${Date.now()}`,
+      averageRating: undefined,
+      totalReviews: 0,
+      isFeatured: false,
+      isNewArrival: false,
+      lowStockThreshold: 10,
+      totalSales: 0,
+    });
+  },
+});
+
+/**
+ * Update a product (admin only)
+ */
+export const updateProduct = mutation({
+  args: {
+    productId: v.id("products"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    price: v.optional(v.number()),
+    compareAtPrice: v.optional(v.number()),
+    categoryId: v.optional(v.id("categories")),
+    sustainabilityScore: v.optional(v.number()),
+    materials: v.optional(v.array(v.string())),
+    tags: v.optional(v.array(v.string())),
+    stockQuantity: v.optional(v.number()),
+    isActive: v.optional(v.boolean()),
+    images: v.optional(v.array(v.string())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    const updates: any = {};
+    
+    if (args.name !== undefined) {
+      updates.name = args.name;
+      updates.slug = args.name.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '');
+    }
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.price !== undefined) updates.basePrice = args.price;
+    if (args.compareAtPrice !== undefined) updates.salePrice = args.compareAtPrice;
+    if (args.categoryId !== undefined) updates.categoryId = args.categoryId;
+    if (args.sustainabilityScore !== undefined) updates.sustainabilityScore = args.sustainabilityScore;
+    if (args.materials !== undefined) updates.material = args.materials.join(', ');
+    if (args.stockQuantity !== undefined) updates.totalStock = args.stockQuantity;
+    if (args.isActive !== undefined) updates.status = args.isActive ? "active" : "draft";
+
+    await ctx.db.patch(args.productId, updates);
+    return null;
+  },
+});
+
+/**
+ * Delete a product (admin only)
+ */
+export const deleteProduct = mutation({
+  args: {
+    productId: v.id("products"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    // Check if product has orders
+    const orders = await ctx.db
+      .query("orderItems")
+      .filter((q) => q.eq(q.field("productId"), args.productId))
+      .take(1);
+
+    if (orders.length > 0) {
+      // Don't delete, just archive if it has orders
+      await ctx.db.patch(args.productId, { status: "archived" });
+    } else {
+      // Safe to delete if no orders
+      await ctx.db.delete(args.productId);
+    }
+
+    return null;
+  },
+});
+
+/**
+ * Get product statistics (admin only)
+ */
+export const getProductStats = query({
+  args: {},
+  returns: v.object({
+    totalProducts: v.number(),
+    activeProducts: v.number(),
+    inactiveProducts: v.number(),
+    lowStockProducts: v.number(),
+    outOfStockProducts: v.number(),
+    totalValue: v.number(),
+  }),
+  handler: async (ctx) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    const products = await ctx.db.query("products").collect();
+    
+    const totalProducts = products.length;
+    const activeProducts = products.filter(p => p.status === "active").length;
+    const inactiveProducts = products.filter(p => p.status !== "active").length;
+    const lowStockProducts = products.filter(p => p.totalStock > 0 && p.totalStock < 10).length;
+    const outOfStockProducts = products.filter(p => p.totalStock === 0).length;
+    const totalValue = products.reduce((sum, p) => sum + (p.basePrice * p.totalStock), 0);
+    
+    return {
+      totalProducts,
+      activeProducts,
+      inactiveProducts,
+      lowStockProducts,
+      outOfStockProducts,
+      totalValue,
+    };
+  },
+});
+
+/**
+ * Get product images for a specific product (general images only, no variant-specific)
+ */
+export const getProductImages = query({
+  args: {
+    productId: v.id("products"),
+  },
+  returns: v.array(v.object({
+    _id: v.id("productImages"),
+    _creationTime: v.number(),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("productVariants")),
+    imageUrl: v.string(),
+    altText: v.optional(v.string()),
+    sortOrder: v.number(),
+    isPrimary: v.boolean(),
+  })),
+  handler: async (ctx, args) => {
+    const images = await ctx.db
+      .query("productImages")
+      .withIndex("by_product_and_variant", (q) => 
+        q.eq("productId", args.productId).eq("variantId", undefined)
+      )
+      .collect();
+    
+    return images.sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+});
+
+/**
+ * Get images for a specific product variant
+ */
+export const getVariantImages = query({
+  args: {
+    productId: v.id("products"),
+    variantId: v.id("productVariants"),
+  },
+  returns: v.array(v.object({
+    _id: v.id("productImages"),
+    _creationTime: v.number(),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("productVariants")),
+    imageUrl: v.string(),
+    altText: v.optional(v.string()),
+    sortOrder: v.number(),
+    isPrimary: v.boolean(),
+  })),
+  handler: async (ctx, args) => {
+    const images = await ctx.db
+      .query("productImages")
+      .withIndex("by_product_and_variant", (q) => 
+        q.eq("productId", args.productId).eq("variantId", args.variantId)
+      )
+      .collect();
+    
+    return images.sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+});
+
+/**
+ * Get all images for a product (including variant-specific images)
+ */
+export const getAllProductImages = query({
+  args: {
+    productId: v.id("products"),
+  },
+  returns: v.array(v.object({
+    _id: v.id("productImages"),
+    _creationTime: v.number(),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("productVariants")),
+    imageUrl: v.string(),
+    altText: v.optional(v.string()),
+    sortOrder: v.number(),
+    isPrimary: v.boolean(),
+  })),
+  handler: async (ctx, args) => {
+    const images = await ctx.db
+      .query("productImages")
+      .withIndex("by_product_id", (q) => q.eq("productId", args.productId))
+      .collect();
+    
+    return images.sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+});
+
+/**
+ * Get product variants
+ */
+export const getProductVariants = query({
+  args: {
+    productId: v.id("products"),
+  },
+  returns: v.array(v.object({
+    _id: v.id("productVariants"),
+    _creationTime: v.number(),
+    productId: v.id("products"),
+    name: v.string(),
+    type: v.string(),
+    value: v.string(),
+    priceAdjustment: v.number(),
+    stockQuantity: v.number(),
+    sku: v.string(),
+    imageUrl: v.optional(v.string()),
+  })),
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("productVariants")
+      .withIndex("by_product_id", (q) => q.eq("productId", args.productId))
+      .collect();
+  },
+});
+
+/**
+ * Create a new product variant (admin only)
+ */
+export const createProductVariant = mutation({
+  args: {
+    productId: v.id("products"),
+    name: v.string(),
+    type: v.string(),
+    value: v.string(),
+    priceAdjustment: v.number(),
+    stockQuantity: v.number(),
+  },
+  returns: v.id("productVariants"),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    // Generate SKU for variant
+    const baseProduct = await ctx.db.get(args.productId);
+    if (!baseProduct) {
+      throw new Error("Product not found");
+    }
+    
+    const variantSku = `${baseProduct.sku}-${args.type}-${args.value}`.replace(/\s+/g, '-').toUpperCase();
+    
+    return await ctx.db.insert("productVariants", {
+      productId: args.productId,
+      name: args.name,
+      type: args.type,
+      value: args.value,
+      priceAdjustment: args.priceAdjustment,
+      stockQuantity: args.stockQuantity,
+      sku: variantSku,
+    });
+  },
+});
+
+/**
+ * Update a product variant (admin only)
+ */
+export const updateProductVariant = mutation({
+  args: {
+    variantId: v.id("productVariants"),
+    name: v.optional(v.string()),
+    priceAdjustment: v.optional(v.number()),
+    stockQuantity: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    const updates: any = {};
+    if (args.name !== undefined) updates.name = args.name;
+    if (args.priceAdjustment !== undefined) updates.priceAdjustment = args.priceAdjustment;
+    if (args.stockQuantity !== undefined) updates.stockQuantity = args.stockQuantity;
+    
+    await ctx.db.patch(args.variantId, updates);
+    return null;
+  },
+});
+
+/**
+ * Delete a product variant (admin only)
+ */
+export const deleteProductVariant = mutation({
+  args: {
+    variantId: v.id("productVariants"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    // Delete associated images first
+    const variantImages = await ctx.db
+      .query("productImages")
+      .withIndex("by_variant_id", (q) => q.eq("variantId", args.variantId))
+      .collect();
+    
+    for (const image of variantImages) {
+      await ctx.db.delete(image._id);
+    }
+    
+    // Delete the variant
+    await ctx.db.delete(args.variantId);
+    return null;
+  },
 }); 

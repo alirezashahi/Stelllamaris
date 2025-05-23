@@ -1,6 +1,9 @@
 import React, { useState } from 'react'
-import { Package, Users, ShoppingBag, TrendingUp, Settings } from 'lucide-react'
+import { Package, Users, ShoppingBag, TrendingUp, Settings, Percent } from 'lucide-react'
 import OrderManagement from './OrderManagement'
+import PromoCodeManagement from './PromoCodeManagement'
+import ProductManagement from './ProductManagement'
+import CustomerManagement from './CustomerManagement'
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('orders')
@@ -94,6 +97,12 @@ const AdminDashboard: React.FC = () => {
                   isActive={activeTab === 'products'}
                 />
                 <TabButton
+                  id="promo-codes"
+                  label="Promo Codes"
+                  icon={Percent}
+                  isActive={activeTab === 'promo-codes'}
+                />
+                <TabButton
                   id="users"
                   label="Users"
                   icon={Users}
@@ -114,19 +123,11 @@ const AdminDashboard: React.FC = () => {
             <div className="bg-white rounded-lg shadow-sm">
               {activeTab === 'orders' && <OrderManagement />}
               
-              {activeTab === 'products' && (
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">Product Management</h2>
-                  <p className="text-gray-600">Product management coming soon...</p>
-                </div>
-              )}
+              {activeTab === 'products' && <ProductManagement />}
+
+              {activeTab === 'promo-codes' && <PromoCodeManagement />}
               
-              {activeTab === 'users' && (
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">User Management</h2>
-                  <p className="text-gray-600">User management coming soon...</p>
-                </div>
-              )}
+              {activeTab === 'users' && <CustomerManagement />}
               
               {activeTab === 'settings' && (
                 <div className="p-6">

@@ -370,4 +370,108 @@ export const setDefaultAddress = mutation({
     await ctx.db.patch(args.addressId, { isDefault: true });
     return null;
   },
+});
+
+/**
+ * Get all customers for admin management
+ */
+export const getAllCustomers = query({
+  args: {},
+  returns: v.array(v.object({
+    _id: v.id("users"),
+    _creationTime: v.number(),
+    clerkUserId: v.string(),
+    name: v.string(),
+    email: v.string(),
+    totalOrders: v.number(),
+    totalSpent: v.number(),
+    lastOrderDate: v.optional(v.number()),
+  })),
+  handler: async (ctx) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    const users = await ctx.db.query("users").collect();
+    
+    // Get order statistics for each user
+    const usersWithStats = await Promise.all(
+      users.map(async (user) => {
+        const orders = await ctx.db
+          .query("orders")
+          .filter((q) => q.eq(q.field("email"), user.email))
+          .collect();
+        
+        const totalOrders = orders.length;
+        const totalSpent = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+        const lastOrderDate = orders.length > 0 
+          ? Math.max(...orders.map(o => o._creationTime))
+          : undefined;
+        
+        return {
+          _id: user._id,
+          _creationTime: user._creationTime,
+          clerkUserId: user.clerkUserId,
+          name: user.name,
+          email: user.email,
+          totalOrders,
+          totalSpent,
+          lastOrderDate,
+        };
+      })
+    );
+    
+    return usersWithStats.sort((a, b) => b.totalSpent - a.totalSpent);
+  },
+});
+
+/**
+ * Get customer statistics (admin only)
+ */
+export const getCustomerStats = query({
+  args: {},
+  returns: v.object({
+    totalCustomers: v.number(),
+    newThisMonth: v.number(),
+    highValueCustomers: v.number(),
+    frequentBuyers: v.number(),
+    averageOrderValue: v.number(),
+    customerLifetimeValue: v.number(),
+  }),
+  handler: async (ctx) => {
+    // TODO: Add admin role check when authentication is fully implemented
+    
+    const users = await ctx.db.query("users").collect();
+    const orders = await ctx.db.query("orders").collect();
+    
+    const totalCustomers = users.length;
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const newThisMonth = users.filter(u => u._creationTime > thirtyDaysAgo).length;
+    
+    // Calculate user spending by email since orders use email field
+    const userSpending = new Map<string, { totalSpent: number; orderCount: number }>();
+    orders.forEach(order => {
+      const existing = userSpending.get(order.email) || { totalSpent: 0, orderCount: 0 };
+      userSpending.set(order.email, {
+        totalSpent: existing.totalSpent + order.totalAmount,
+        orderCount: existing.orderCount + 1,
+      });
+    });
+    
+    const highValueCustomers = Array.from(userSpending.values())
+      .filter(stats => stats.totalSpent >= 500).length;
+    const frequentBuyers = Array.from(userSpending.values())
+      .filter(stats => stats.orderCount >= 5).length;
+    
+    const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const averageOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
+    const customerLifetimeValue = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
+    
+    return {
+      totalCustomers,
+      newThisMonth,
+      highValueCustomers,
+      frequentBuyers,
+      averageOrderValue,
+      customerLifetimeValue,
+    };
+  },
 }); 
