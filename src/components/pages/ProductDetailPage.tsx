@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight, Image, Palette } from 'lucide-react';
 import { Id } from '../../../convex/_generated/dataModel';
 import ReviewSection from '../reviews/ReviewSection';
 
@@ -10,6 +10,7 @@ const ProductDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, Id<"productVariants">>>({});
+  const [imageMode, setImageMode] = useState<'general' | 'variant'>('general');
 
   // Get product by slug
   const products = useQuery(api.products.getAllProducts);
@@ -46,13 +47,38 @@ const ProductDetailPage: React.FC = () => {
     return acc;
   }, {} as Record<string, typeof productVariants>) || {};
 
-  // Determine which images to display (variant images if color selected, otherwise general images)
-  const displayImages = variantImages?.length ? variantImages : (productImages || []);
+  // Determine which images to display based on mode and availability
+  const displayImages = (() => {
+    if (imageMode === 'variant' && variantImages?.length) {
+      return variantImages;
+    } else if (imageMode === 'general' && productImages?.length) {
+      return productImages;
+    } else if (productImages?.length) {
+      return productImages;
+    } else if (variantImages?.length) {
+      return variantImages;
+    }
+    return [];
+  })();
+
+  // Auto-switch to variant mode when color variant is selected (but don't force it)
+  useEffect(() => {
+    if (selectedColorVariant && variantImages?.length && imageMode === 'general') {
+      setImageMode('variant');
+    }
+  }, [selectedColorVariant, variantImages?.length, imageMode]);
 
   // Reset image index when images change
   useEffect(() => {
     setSelectedImageIndex(0);
   }, [displayImages]);
+
+  // Reset image mode when no color variant is selected
+  useEffect(() => {
+    if (!selectedColorVariant) {
+      setImageMode('general');
+    }
+  }, [selectedColorVariant]);
 
   if (!product) {
     return (
@@ -122,13 +148,7 @@ const ProductDetailPage: React.FC = () => {
 
   const availableStock = getSelectedVariantStock();
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        {/* Image Gallery */}
-        <div className="space-y-4">
-          {/* Main Image */}
-          <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
+      return (    <div className="container mx-auto px-4 py-8">      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">        {/* Image Gallery */}        <div className="space-y-4">          {/* Image Mode Toggle */}          {productImages && productImages.length > 0 && variantImages && variantImages.length > 0 && selectedColorVariant && (            <div className="flex space-x-2 mb-4">              <button                onClick={() => setImageMode('general')}                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${                  imageMode === 'general'                    ? 'bg-stellamaris-600 text-white'                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'                }`}              >                <Image className="h-4 w-4" />                <span>General Photos ({productImages.length})</span>              </button>              <button                onClick={() => setImageMode('variant')}                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${                  imageMode === 'variant'                    ? 'bg-stellamaris-600 text-white'                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'                }`}              >                <Palette className="h-4 w-4" />                <span>{productVariants?.find(v => v._id === selectedColorVariant)?.name} Photos ({variantImages.length})</span>              </button>            </div>          )}          {/* Main Image */}          <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
             {selectedImage ? (
               <img
                 src={selectedImage.imageUrl}
@@ -166,12 +186,7 @@ const ProductDetailPage: React.FC = () => {
               </div>
             )}
 
-            {/* Variant Indicator */}
-            {variantImages?.length && selectedColorVariant && (
-              <div className="absolute top-4 left-4 bg-stellamaris-600 text-white text-xs px-2 py-1 rounded">
-                {productVariants?.find(v => v._id === selectedColorVariant)?.name} Images
-              </div>
-            )}
+                                    {/* Image Mode Indicator */}            {displayImages && displayImages.length > 0 && (              <div className="absolute top-4 left-4 bg-stellamaris-600 text-white text-xs px-2 py-1 rounded">                {imageMode === 'variant' && selectedColorVariant                  ? `${productVariants?.find(v => v._id === selectedColorVariant)?.name} Images`                  : 'General Images'                }              </div>            )}
           </div>
 
           {/* Thumbnail Gallery */}

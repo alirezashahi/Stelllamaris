@@ -1,9 +1,5 @@
-import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useMutation } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
-import { Upload, X, Star, Image as ImageIcon, Trash2, Plus, Edit3 } from 'lucide-react';
-import { Id } from '../../../convex/_generated/dataModel';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { Upload, X, Star, Image as ImageIcon, Trash2, Plus } from 'lucide-react';
 
 interface TempImage {
   id: string;
@@ -16,7 +12,7 @@ interface TempImage {
 interface TempVariant {
   id: string;
   name: string;
-  type: string;
+  type: 'color' | 'size' | 'material' | 'style';
   value: string;
   priceAdjustment: number;
   stockQuantity: number;
@@ -34,108 +30,143 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
   onVariantsChange,
   productName
 }) => {
+  // Main state
   const [activeTab, setActiveTab] = useState<'general' | 'variants'>('general');
   const [generalImages, setGeneralImages] = useState<TempImage[]>([]);
   const [variants, setVariants] = useState<TempVariant[]>([]);
-  const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [showVariantForm, setShowVariantForm] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [variantFormData, setVariantFormData] = useState({
+
+  // Form state - separate variables for stability
+  const [formData, setFormData] = useState({
     name: '',
-    type: 'color',
+    type: 'color' as const,
     value: '',
     priceAdjustment: 0,
-    stockQuantity: 0,
+    stockQuantity: 0
   });
 
-  const handleFileUpload = (files: File[], targetVariantId?: string) => {
-    const newImages: TempImage[] = [];
-    
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert(`File "${file.name}" is not an image`);
-        continue;
-      }
+  // Effect to clear parent's temp images/variants on mount
+  useEffect(() => {
+    onImagesChange([]);
+    onVariantsChange([]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array means this runs only on mount and unmount
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert(`File "${file.name}" is too large. Maximum size is 5MB`);
-        continue;
+  // Helper to generate unique IDs
+  const generateId = useCallback(() => `temp-${Date.now()}-${Math.random()}`, []);
+
+  // Create temp image from file
+  const createTempImage = useCallback((file: File, index: number): TempImage => ({
+    id: generateId(),
+    file,
+    preview: URL.createObjectURL(file),
+    isPrimary: false,
+    altText: `${productName} image ${index + 1}`
+  }), [generateId, productName]);
+
+  // Validate file
+  const validateFile = useCallback((file: File): string | null => {
+    if (!file.type.startsWith('image/')) {
+      return `${file.name} is not an image file`;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return `${file.name} is too large (max 5MB)`;
+    }
+    return null;
+  }, []);
+
+  // Handle file upload
+  const handleFileUpload = useCallback((files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const newImages: TempImage[] = [];
+    const errors: string[] = [];
+
+    fileArray.forEach((file, index) => {
+      const error = validateFile(file);
+      if (error) {
+        errors.push(error);
+        return;
       }
-      
-      const tempImage: TempImage = {
-        id: `temp-${Date.now()}-${i}`,
-        file,
-        preview: URL.createObjectURL(file),
-        isPrimary: false,
-        altText: `${productName} image ${i + 1}`,
-      };
-      
-      newImages.push(tempImage);
+      newImages.push(createTempImage(file, index));
+    });
+
+    if (errors.length > 0) {
+      alert(errors.join('\n'));
     }
 
-    if (targetVariantId) {
-      // Add to specific variant
-      const updatedVariants = variants.map(variant => {
-        if (variant.id === targetVariantId) {
-          const updatedVariant = {
-            ...variant,
-            images: [...variant.images, ...newImages.map(img => ({
-              ...img,
-              isPrimary: variant.images.length === 0 && img === newImages[0]
-            }))]
-          };
-          return updatedVariant;
+    if (newImages.length === 0) return;
+
+    if (activeTab === 'general') {
+      setGeneralImages(prev => {
+        const updated = [...prev, ...newImages];
+        // Set first image as primary if no primary exists
+        if (prev.length === 0 && updated.length > 0) {
+          updated[0].isPrimary = true;
+        }
+        onImagesChange(updated);
+        return updated;
+      });
+    } else if (selectedVariantId) {
+      setVariants(prev => {
+        const updated = prev.map(variant => {
+          if (variant.id === selectedVariantId) {
+            const variantImages = [...variant.images, ...newImages];
+            // Set first image as primary if no primary exists
+            if (variant.images.length === 0 && variantImages.length > 0) {
+              variantImages[0].isPrimary = true;
+            }
+            return { ...variant, images: variantImages };
         }
         return variant;
+        });
+        onVariantsChange(updated);
+        return updated;
       });
-      setVariants(updatedVariants);
-      onVariantsChange(updatedVariants);
-    } else {
-      // Add to general images
-      const updatedImages = [...generalImages, ...newImages.map(img => ({
-        ...img,
-        isPrimary: generalImages.length === 0 && img === newImages[0]
-      }))];
-      setGeneralImages(updatedImages);
-      onImagesChange(updatedImages);
     }
-  };
+  }, [activeTab, selectedVariantId, validateFile, createTempImage, onImagesChange, onVariantsChange]);
 
-  const handleCreateVariant = (e: React.FormEvent) => {
+  // Handle drag and drop
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    
-    const newVariant: TempVariant = {
-      id: `variant-${Date.now()}`,
-      name: variantFormData.name,
-      type: variantFormData.type,
-      value: variantFormData.value,
-      priceAdjustment: variantFormData.priceAdjustment,
-      stockQuantity: variantFormData.stockQuantity,
-      images: [],
-    };
-    
-    const updatedVariants = [...variants, newVariant];
-    setVariants(updatedVariants);
-    onVariantsChange(updatedVariants);
-    
-    setShowVariantForm(false);
-    setVariantFormData({
-      name: '',
-      type: 'color',
-      value: '',
-      priceAdjustment: 0,
-      stockQuantity: 0,
-    });
-  };
+    setDragActive(false);
+    handleFileUpload(e.dataTransfer.files);
+  }, [handleFileUpload]);
 
-  const handleSetPrimary = (imageId: string, variantId?: string) => {
-    if (variantId) {
-      const updatedVariants = variants.map(variant => {
-        if (variant.id === variantId) {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+  }, []);
+
+  // Handle file input
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      handleFileUpload(e.target.files);
+      e.target.value = '';
+    }
+  }, [handleFileUpload]);
+
+  // Set primary image
+  const handleSetPrimary = useCallback((imageId: string) => {
+    if (activeTab === 'general') {
+      setGeneralImages(prev => {
+        const updated = prev.map(img => ({
+          ...img,
+          isPrimary: img.id === imageId
+        }));
+        onImagesChange(updated);
+        return updated;
+      });
+    } else if (selectedVariantId) {
+      setVariants(prev => {
+        const updated = prev.map(variant => {
+          if (variant.id === selectedVariantId) {
           return {
             ...variant,
             images: variant.images.map(img => ({
@@ -146,126 +177,388 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
         }
         return variant;
       });
-      setVariants(updatedVariants);
-      onVariantsChange(updatedVariants);
-    } else {
-      const updatedImages = generalImages.map(img => ({
-        ...img,
-        isPrimary: img.id === imageId
-      }));
-      setGeneralImages(updatedImages);
-      onImagesChange(updatedImages);
+        onVariantsChange(updated);
+        return updated;
+      });
     }
-  };
+  }, [activeTab, selectedVariantId, onImagesChange, onVariantsChange]);
 
-  const handleDeleteImage = (imageId: string, variantId?: string) => {
-    if (variantId) {
-      const updatedVariants = variants.map(variant => {
-        if (variant.id === variantId) {
+  // Delete image
+  const handleDeleteImage = useCallback((imageId: string) => {
+    if (activeTab === 'general') {
+      setGeneralImages(prev => {
+        const updated = prev.filter(img => img.id !== imageId);
+        // Auto-assign primary if deleted image was primary
+        if (updated.length > 0 && !updated.some(img => img.isPrimary)) {
+          updated[0].isPrimary = true;
+        }
+        onImagesChange(updated);
+        return updated;
+      });
+    } else if (selectedVariantId) {
+      setVariants(prev => {
+        const updated = prev.map(variant => {
+          if (variant.id === selectedVariantId) {
           const filteredImages = variant.images.filter(img => img.id !== imageId);
-          // If deleted image was primary, make first image primary
+            // Auto-assign primary if deleted image was primary
           if (filteredImages.length > 0 && !filteredImages.some(img => img.isPrimary)) {
             filteredImages[0].isPrimary = true;
           }
-          return {
-            ...variant,
-            images: filteredImages
-          };
+            return { ...variant, images: filteredImages };
         }
         return variant;
+        });
+        onVariantsChange(updated);
+        return updated;
       });
-      setVariants(updatedVariants);
-      onVariantsChange(updatedVariants);
-    } else {
-      const filteredImages = generalImages.filter(img => img.id !== imageId);
-      // If deleted image was primary, make first image primary
-      if (filteredImages.length > 0 && !filteredImages.some(img => img.isPrimary)) {
-        filteredImages[0].isPrimary = true;
-      }
-      setGeneralImages(filteredImages);
-      onImagesChange(filteredImages);
     }
-  };
+  }, [activeTab, selectedVariantId, onImagesChange, onVariantsChange]);
 
-  const handleDeleteVariant = (variantId: string) => {
-    if (window.confirm('Are you sure you want to delete this variant and all its images?')) {
-      const updatedVariants = variants.filter(v => v.id !== variantId);
-      setVariants(updatedVariants);
-      onVariantsChange(updatedVariants);
-      if (selectedVariant === variantId) {
-        setSelectedVariant(null);
-      }
+  // Create variant
+  const handleCreateVariant = useCallback((e?: React.FormEvent | React.MouseEvent) => {
+    if (e) {
+      // CRITICAL: Prevent any event propagation
+      e.preventDefault();
+      e.stopPropagation();
     }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const targetVariantId = activeTab === 'variants' ? selectedVariant : undefined;
-      handleFileUpload(Array.from(e.target.files), targetVariantId || undefined);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragActive(false);
     
-    if (e.dataTransfer.files) {
-      const targetVariantId = activeTab === 'variants' ? selectedVariant : undefined;
-      handleFileUpload(Array.from(e.dataTransfer.files), targetVariantId || undefined);
+    // Validate required fields
+    if (!formData.name.trim()) {
+      alert('Variant name is required');
+      return;
     }
-  };
+    
+    if (!formData.value.trim()) {
+      alert('Variant value is required');
+      return;
+    }
+    
+    if (formData.stockQuantity < 0) {
+      alert('Stock quantity cannot be negative');
+      return;
+    }
+    
+    try {
+      const newVariant: TempVariant = {
+        id: generateId(),
+        name: formData.name.trim(),
+        type: formData.type,
+        value: formData.value.trim(),
+        priceAdjustment: formData.priceAdjustment,
+        stockQuantity: formData.stockQuantity,
+        images: []
+      };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragActive(true);
-  };
+      setVariants(prev => {
+        const updated = [...prev, newVariant];
+        onVariantsChange(updated);
+        return updated;
+      });
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragActive(false);
-  };
+      // Reset form
+      setFormData({
+        name: '',
+        type: 'color',
+        value: '',
+        priceAdjustment: 0,
+        stockQuantity: 0
+      });
+      setShowVariantForm(false);
+    } catch (error) {
+      console.error('Error creating variant:', error);
+    }
+  }, [formData, generateId, onVariantsChange]);
 
-  const getCurrentImages = () => {
+  // Delete variant
+  const handleDeleteVariant = useCallback((variantId: string) => {
+    if (!confirm('Delete this variant and all its images?')) return;
+    
+    setVariants(prev => {
+      const updated = prev.filter(v => v.id !== variantId);
+      onVariantsChange(updated);
+      return updated;
+    });
+    
+    if (selectedVariantId === variantId) {
+      setSelectedVariantId(null);
+    }
+  }, [selectedVariantId, onVariantsChange]);
+
+  // Add variant form button handler
+  const handleAddVariantClick = useCallback(() => {
+    setShowVariantForm(true);
+  }, []);
+
+  // Modal close handler
+  const handleModalClose = useCallback(() => {
+    setShowVariantForm(false);
+  }, []);
+
+  // Form input change handlers
+  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, name: e.target.value }));
+  }, []);
+
+  const handleTypeChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData(prev => ({ ...prev, type: e.target.value as any }));
+  }, []);
+
+  const handleValueChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, value: e.target.value }));
+  }, []);
+
+  const handlePriceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, priceAdjustment: parseFloat(e.target.value) || 0 }));
+  }, []);
+
+  const handleStockChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, stockQuantity: parseInt(e.target.value) || 0 }));
+  }, []);
+
+  // Get current images based on active tab and selection
+  const currentImages = useMemo(() => {
     if (activeTab === 'general') {
       return generalImages;
-    } else if (selectedVariant) {
-      const variant = variants.find(v => v.id === selectedVariant);
+    }
+    if (selectedVariantId) {
+      const variant = variants.find(v => v.id === selectedVariantId);
       return variant?.images || [];
     }
     return [];
-  };
+  }, [activeTab, selectedVariantId, generalImages, variants]);
 
-  const resetVariantForm = () => {
-    setShowVariantForm(false);
-    setVariantFormData({
-      name: '',
-      type: 'color',
-      value: '',
-      priceAdjustment: 0,
-      stockQuantity: 0,
-    });
-  };
+  // Upload area component
+  const UploadArea = useMemo(() => (
+    <div
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+        dragActive 
+          ? 'border-stellamaris-400 bg-stellamaris-50' 
+          : 'border-gray-300 hover:border-gray-400'
+      }`}
+    >
+      <Upload className="mx-auto h-12 w-12 text-gray-400" />
+      <div className="mt-4">
+        <label className="cursor-pointer">
+          <span className="mt-2 block text-sm font-medium text-gray-900">
+            Click to upload or drag and drop
+          </span>
+          <span className="mt-2 block text-sm text-gray-500">
+            PNG, JPG, GIF up to 5MB each
+          </span>
+          <input
+            type="file"
+            className="sr-only"
+            multiple
+            accept="image/*"
+            onChange={handleFileInput}
+          />
+        </label>
+      </div>
+    </div>
+  ), [dragActive, handleDrop, handleDragOver, handleDragLeave, handleFileInput]);
 
-  const currentImages = getCurrentImages();
+  // Images grid component
+  const ImagesGrid = useMemo(() => {
+    if (currentImages.length === 0) return null;
 
-  // Variant Form Modal Component (will be rendered using Portal)
-  const VariantFormModal = () => (
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {currentImages.map((image, index) => (
+          <div key={image.id} className="relative group">
+            <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border">
+              <img
+                src={image.preview}
+                alt={image.altText}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            
+            {/* Controls */}
+            <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={() => handleSetPrimary(image.id)}
+                className={`p-1 rounded-full ${
+                  image.isPrimary 
+                    ? 'bg-yellow-500 text-white' 
+                    : 'bg-white bg-opacity-80 text-gray-700 hover:bg-yellow-500 hover:text-white'
+                }`}
+                title={image.isPrimary ? 'Primary image' : 'Set as primary'}
+              >
+                <Star className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteImage(image.id)}
+                className="p-1 rounded-full bg-white bg-opacity-80 text-gray-700 hover:bg-red-500 hover:text-white"
+                title="Delete image"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+            
+            {/* Badge */}
+            <div className="absolute bottom-2 left-2 flex space-x-1">
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-black bg-opacity-70 text-white">
+                {index + 1}
+              </span>
+              {image.isPrimary && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-500 text-white">
+                  Primary
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }, [currentImages, handleSetPrimary, handleDeleteImage]);
+
+  return (
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            type="button"
+            onClick={() => setActiveTab('general')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'general'
+                ? 'border-stellamaris-500 text-stellamaris-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            General Images ({generalImages.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('variants')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'variants'
+                ? 'border-stellamaris-500 text-stellamaris-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Variant Images ({variants.length} variants)
+          </button>
+        </nav>
+      </div>
+
+      {/* General Images Tab */}
+      {activeTab === 'general' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h4 className="text-sm font-medium text-gray-900">General Product Images</h4>
+            <p className="text-sm text-gray-500">Shown when no variant is selected</p>
+          </div>
+          {UploadArea}
+          {ImagesGrid}
+        </div>
+      )}
+
+      {/* Variants Tab */}
+      {activeTab === 'variants' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h4 className="text-sm font-medium text-gray-900">Product Variants & Images</h4>
+            <button
+              type="button"
+              onClick={handleAddVariantClick}
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-stellamaris-600 hover:bg-stellamaris-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Variant
+            </button>
+          </div>
+
+          {/* Variants Grid */}
+          {variants.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {variants.map((variant) => (
+                <div
+                  key={variant.id}
+                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                    selectedVariantId === variant.id
+                      ? 'border-stellamaris-500 bg-stellamaris-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setSelectedVariantId(
+                    selectedVariantId === variant.id ? null : variant.id
+                  )}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h5 className="font-medium text-gray-900">{variant.name}</h5>
+                      <p className="text-sm text-gray-500 capitalize">{variant.type}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteVariant(variant.id);
+                      }}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-1 text-sm text-gray-600">
+                    <p>Value: {variant.value}</p>
+                    <p>Price: {variant.priceAdjustment >= 0 ? '+' : ''}${variant.priceAdjustment}</p>
+                    <p>Stock: {variant.stockQuantity}</p>
+                    <p>Images: {variant.images.length}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+              <p className="mt-2">No variants created yet</p>
+              <p className="text-sm">Create variants to upload variant-specific images</p>
+            </div>
+          )}
+
+          {/* Selected Variant Images */}
+          {selectedVariantId && (
+            <div className="border-t pt-6">
+              <div className="flex justify-between items-center mb-4">
+                <h5 className="text-sm font-medium text-gray-900">
+                  Images for: {variants.find(v => v.id === selectedVariantId)?.name}
+                </h5>
+                <p className="text-sm text-gray-500">Upload variant-specific images</p>
+              </div>
+              {UploadArea}
+              {ImagesGrid}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Variant Form Modal */}
+      {showVariantForm && (
     <div 
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       onClick={(e) => {
-        // Only close if clicking the backdrop, not the modal content
+            // Prevent clicks on backdrop from bubbling
+            e.stopPropagation();
         if (e.target === e.currentTarget) {
-          resetVariantForm();
+              setShowVariantForm(false);
         }
       }}
     >
       <div 
         className="bg-white rounded-lg p-6 w-full max-w-md"
-        onClick={(e) => e.stopPropagation()} // Prevent backdrop click when clicking inside modal
+            onClick={(e) => e.stopPropagation()} // Prevent clicks inside modal from bubbling
       >
         <h3 className="text-lg font-medium text-gray-900 mb-4">Add Product Variant</h3>
         
-        <form onSubmit={handleCreateVariant} className="space-y-4">
+            {/* CRITICAL: Use div instead of form to prevent nesting, handle submission manually */}
+            <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Variant Name *
@@ -273,10 +566,16 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
             <input
               type="text"
               required
-              value={variantFormData.name}
-              onChange={(e) => setVariantFormData({ ...variantFormData, name: e.target.value })}
+                  value={formData.name}
+                  onChange={handleNameChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
               placeholder="e.g., Red, Large, Cotton"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
             />
           </div>
 
@@ -286,9 +585,10 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
             </label>
             <select
               required
-              value={variantFormData.type}
-              onChange={(e) => setVariantFormData({ ...variantFormData, type: e.target.value })}
+                  value={formData.type}
+                  onChange={handleTypeChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                  onKeyDown={(e) => e.stopPropagation()}
             >
               <option value="color">Color</option>
               <option value="size">Size</option>
@@ -304,10 +604,16 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
             <input
               type="text"
               required
-              value={variantFormData.value}
-              onChange={(e) => setVariantFormData({ ...variantFormData, value: e.target.value })}
+                  value={formData.value}
+                  onChange={handleValueChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
               placeholder="e.g., red, xl, cotton"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
             />
           </div>
 
@@ -318,10 +624,16 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
             <input
               type="number"
               step="0.01"
-              value={variantFormData.priceAdjustment}
-              onChange={(e) => setVariantFormData({ ...variantFormData, priceAdjustment: parseFloat(e.target.value) || 0 })}
+                  value={formData.priceAdjustment}
+                  onChange={handlePriceChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
               placeholder="0.00"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
             />
             <p className="text-xs text-gray-500 mt-1">Amount to add/subtract from base price</p>
           </div>
@@ -334,322 +646,43 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
               type="number"
               required
               min="0"
-              value={variantFormData.stockQuantity}
-              onChange={(e) => setVariantFormData({ ...variantFormData, stockQuantity: parseInt(e.target.value) || 0 })}
+                  value={formData.stockQuantity}
+                  onChange={handleStockChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
             />
           </div>
 
           <div className="flex space-x-4 pt-4">
             <button
               type="button"
-              onClick={resetVariantForm}
+                  onClick={handleModalClose}
               className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              className="flex-1 bg-stellamaris-600 text-white py-2 px-4 rounded-md hover:bg-stellamaris-700 transition-colors"
-            >
-              Add Variant
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-  
-  return (
-    <>
-      <div className="space-y-6">
-        {/* Tab Navigation */}
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => setActiveTab('general')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'general'
-                  ? 'border-stellamaris-500 text-stellamaris-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              General Images ({generalImages.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('variants')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'variants'
-                  ? 'border-stellamaris-500 text-stellamaris-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Variant Images ({variants.length} variants)
-            </button>
-          </nav>
-        </div>
-
-        {/* General Images Tab */}
-        {activeTab === 'general' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h4 className="text-sm font-medium text-gray-900">General Product Images</h4>
-              <p className="text-sm text-gray-500">These images will be shown when no variant is selected</p>
-            </div>
-
-            {/* Upload Area */}
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                dragActive 
-                  ? 'border-stellamaris-400 bg-stellamaris-50' 
-                  : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <Upload className="mx-auto h-12 w-12 text-gray-400" />
-              <div className="mt-4">
-                <label htmlFor="general-file-upload" className="cursor-pointer">
-                  <span className="mt-2 block text-sm font-medium text-gray-900">
-                    Upload general product images
-                  </span>
-                  <span className="mt-2 block text-sm text-gray-500">
-                    or drag and drop PNG, JPG, GIF up to 5MB each
-                  </span>
-                  <input
-                    id="general-file-upload"
-                    name="general-file-upload"
-                    type="file"
-                    className="sr-only"
-                    multiple
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                  />
-                </label>
-              </div>
-            </div>
-
-            {/* Images Grid */}
-            {currentImages.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {currentImages.map((image, index) => (
-                  <div key={image.id} className="relative group">
-                    <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border">
-                      <img
-                        src={image.preview}
-                        alt={image.altText || `Image ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    
-                    <div className="absolute top-2 left-2 flex space-x-1">
-                      <span className="bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
-                        {index + 1}
-                      </span>
-                      {image.isPrimary && (
-                        <span className="bg-stellamaris-600 text-white text-xs px-2 py-1 rounded flex items-center">
-                          <Star className="h-3 w-3 mr-1" />
-                          Primary
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="flex space-x-1">
-                        {!image.isPrimary && (
-                          <button
-                            onClick={() => handleSetPrimary(image.id)}
-                            className="bg-black bg-opacity-75 text-white p-1 rounded hover:bg-opacity-90"
-                            title="Set as primary"
-                          >
-                            <Star className="h-3 w-3" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteImage(image.id)}
-                          className="bg-red-600 bg-opacity-75 text-white p-1 rounded hover:bg-opacity-90"
-                          title="Delete image"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Variants Tab */}
-        {activeTab === 'variants' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h4 className="text-sm font-medium text-gray-900">Product Variants</h4>
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setShowVariantForm(true);
-                }}
-                className="flex items-center space-x-2 bg-stellamaris-600 text-white px-3 py-1 rounded text-sm hover:bg-stellamaris-700"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Add Variant</span>
-              </button>
-            </div>
-
-            {/* Variants List */}
-            {variants.length > 0 && (
-              <div className="space-y-2">
-                {variants.map((variant) => (
-                  <div
-                    key={variant.id}
-                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      selectedVariant === variant.id
-                        ? 'border-stellamaris-500 bg-stellamaris-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => setSelectedVariant(variant.id)}
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <span className="font-medium">{variant.name}</span>
-                        <span className="text-sm text-gray-500 ml-2">
-                          {variant.type}: {variant.value}
-                        </span>
-                        {variant.priceAdjustment !== 0 && (
-                          <span className={`text-sm ml-2 ${
-                            variant.priceAdjustment > 0 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {variant.priceAdjustment > 0 ? '+' : ''}${variant.priceAdjustment}
-                          </span>
-                        )}
-                        <span className="text-sm text-gray-500 ml-2">
-                          Stock: {variant.stockQuantity}
-                        </span>
-                        <span className="text-sm text-gray-500 ml-2">
-                          Images: {variant.images.length}
-                        </span>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteVariant(variant.id);
-                        }}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Selected Variant Images */}
-            {selectedVariant && (
-              <div className="space-y-4 border-t pt-4">
-                <h5 className="text-sm font-medium text-gray-900">
-                  Images for {variants.find(v => v.id === selectedVariant)?.name}
-                </h5>
-
-                {/* Upload Area */}
-                <div
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
-                    dragActive 
-                      ? 'border-stellamaris-400 bg-stellamaris-50' 
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
+                    handleCreateVariant(e);
+                  }}
+                  className="flex-1 bg-stellamaris-600 text-white py-2 px-4 rounded-md hover:bg-stellamaris-700 transition-colors"
                 >
-                  <Upload className="mx-auto h-8 w-8 text-gray-400" />
-                  <div className="mt-2">
-                    <label htmlFor="variant-file-upload" className="cursor-pointer">
-                      <span className="block text-sm font-medium text-gray-900">
-                        Upload variant images
-                      </span>
-                      <span className="block text-xs text-gray-500">
-                        PNG, JPG, GIF up to 5MB each
-                      </span>
-                      <input
-                        id="variant-file-upload"
-                        name="variant-file-upload"
-                        type="file"
-                        className="sr-only"
-                        multiple
-                        accept="image/*"
-                        onChange={handleFileSelect}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                {/* Variant Images Grid */}
-                {currentImages.length > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {currentImages.map((image, index) => (
-                      <div key={image.id} className="relative group">
-                        <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border">
-                          <img
-                            src={image.preview}
-                            alt={image.altText || `Variant image ${index + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        
-                        <div className="absolute top-2 left-2 flex space-x-1">
-                          <span className="bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
-                            {index + 1}
-                          </span>
-                          {image.isPrimary && (
-                            <span className="bg-stellamaris-600 text-white text-xs px-2 py-1 rounded flex items-center">
-                              <Star className="h-3 w-3 mr-1" />
-                              Primary
-                            </span>
-                          )}
-                        </div>
-                        
-                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="flex space-x-1">
-                            {!image.isPrimary && (
-                              <button
-                                onClick={() => handleSetPrimary(image.id, selectedVariant)}
-                                className="bg-black bg-opacity-75 text-white p-1 rounded hover:bg-opacity-90"
-                                title="Set as primary"
-                              >
-                                <Star className="h-3 w-3" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleDeleteImage(image.id, selectedVariant)}
-                              className="bg-red-600 bg-opacity-75 text-white p-1 rounded hover:bg-opacity-90"
-                              title="Delete image"
-                            >
-                              <Trash2 className="h-3 w-3" />
+                  Add Variant
                             </button>
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
-
-      {/* Render Modal using Portal */}
-      {showVariantForm && createPortal(
-        <VariantFormModal />,
-        document.body
-      )}
-    </>
   );
 };
 

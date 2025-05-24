@@ -113,8 +113,11 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
     }
   };
 
-  const handleCreateVariant = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateVariant = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     
     try {
       await createProductVariant({
@@ -188,6 +191,21 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
     }
   };
 
+  const handleDeleteVariant = async (variantId: Id<"productVariants">) => {
+    if (window.confirm('Are you sure you want to delete this variant? This will also delete all images associated with this variant.')) {
+      try {
+        await deleteProductVariant({ variantId });
+        // If the deleted variant was selected, clear the selection
+        if (selectedVariant === variantId) {
+          setSelectedVariant(null);
+        }
+      } catch (error) {
+        console.error('Failed to delete variant:', error);
+        alert('Failed to delete variant. Please try again.');
+      }
+    }
+  };
+
   const getCurrentImages = () => {
     if (activeTab === 'general') {
       return productImages || [];
@@ -207,6 +225,7 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
         {/* Tab Navigation */}
         <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
           <button
+            type="button"
             onClick={() => setActiveTab('general')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'general'
@@ -217,6 +236,7 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
             General Images ({productImages?.length || 0})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('variants')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'variants'
@@ -234,6 +254,7 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
             <div className="flex items-center justify-between">
               <h4 className="text-md font-medium text-gray-900">Manage Variant Images</h4>
               <button
+                type="button"
                 onClick={() => setShowVariantForm(true)}
                 className="flex items-center space-x-2 bg-stellamaris-600 text-white px-3 py-1 rounded-md hover:bg-stellamaris-700 transition-colors text-sm"
               >
@@ -245,71 +266,84 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
             {productVariants && productVariants.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {productVariants.map((variant) => (
-                  <button
+                  <div
                     key={variant._id}
-                    onClick={() => setSelectedVariant(variant._id)}
-                    className={`p-3 rounded-lg border text-left transition-colors ${
+                    className={`p-3 border rounded-lg transition-colors relative group cursor-pointer ${
                       selectedVariant === variant._id
                         ? 'border-stellamaris-500 bg-stellamaris-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
+                    onClick={() => setSelectedVariant(variant._id)}
                   >
-                    <div className="font-medium text-sm">{variant.name}</div>
-                    <div className="text-xs text-gray-500 capitalize">{variant.type}: {variant.value}</div>
-                    <div className="text-xs text-gray-400">Stock: {variant.stockQuantity}</div>
-                  </button>
+                    {/* Delete button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent selecting the variant when clicking delete
+                        handleDeleteVariant(variant._id);
+                      }}
+                      className="absolute top-2 right-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 bg-white rounded p-1 shadow-sm"
+                      title="Delete variant"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                    
+                    <div className="font-medium text-gray-900">{variant.name}</div>
+                    <div className="text-sm text-gray-500 capitalize">{variant.type}: {variant.value}</div>
+                    <div className="text-sm text-gray-500">
+                      ${variant.priceAdjustment >= 0 ? '+' : ''}{variant.priceAdjustment} | Stock: {variant.stockQuantity}
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p>No variants created yet</p>
-                <p className="text-sm">Create variants to manage variant-specific images</p>
+              <div className="text-center py-6 text-gray-500">
+                <p>No variants created yet.</p>
+                <p className="text-sm">Create variants to upload variant-specific images.</p>
               </div>
             )}
           </div>
         )}
 
-        {/* Upload Area - Only show if general tab or variant selected */}
-        {(activeTab === 'general' || (activeTab === 'variants' && selectedVariant)) && (
+        {/* File Upload Area */}
+        {(activeTab === 'general' || selectedVariant) && (
           <div
-            className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
-              dragActive
-                ? 'border-stellamaris-500 bg-stellamaris-50'
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
+            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+              dragActive 
+                ? 'border-stellamaris-400 bg-stellamaris-50' 
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
           >
-            <div className="text-center">
-              <Upload className="mx-auto h-12 w-12 text-gray-400" />
-              <div className="mt-4">
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <span className="text-stellamaris-600 hover:text-stellamaris-700 font-medium">
-                    Click to upload
-                  </span>
-                  <span className="text-gray-500"> or drag and drop</span>
-                  <input
-                    id="file-upload"
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="sr-only"
-                    disabled={uploadingImages}
-                  />
-                </label>
-              </div>
-              <p className="text-sm text-gray-500 mt-2">
-                PNG, JPG, GIF up to 5MB each
-                {activeTab === 'variants' && selectedVariant && (
-                  <span className="block">Uploading to selected variant</span>
-                )}
-              </p>
-              {uploadingImages && (
-                <p className="text-stellamaris-600 mt-2">Uploading images...</p>
-              )}
+            <Upload className="mx-auto h-12 w-12 text-gray-400" />
+            <div className="mt-4">
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <span className="mt-2 block text-sm font-medium text-gray-900">
+                  Click to upload
+                </span>
+                <span className="text-gray-500"> or drag and drop</span>
+                <input
+                  id="file-upload"
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="sr-only"
+                  disabled={uploadingImages}
+                />
+              </label>
             </div>
+            <p className="text-sm text-gray-500 mt-2">
+              PNG, JPG, GIF up to 5MB each
+              {activeTab === 'variants' && selectedVariant && (
+                <span className="block">Uploading to selected variant</span>
+              )}
+            </p>
+            {uploadingImages && (
+              <p className="text-stellamaris-600 mt-2">Uploading images...</p>
+            )}
           </div>
         )}
       </div>
@@ -349,6 +383,7 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                     <div className="flex space-x-2">
                       {!image.isPrimary && (
                         <button
+                          type="button"
                           onClick={() => handleSetPrimary(image._id)}
                           className="bg-yellow-500 text-white p-2 rounded-full hover:bg-yellow-600 transition-colors"
                           title="Set as primary image"
@@ -358,6 +393,7 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                       )}
 
                       <button
+                        type="button"
                         onClick={() => handleDeleteImage(image._id)}
                         className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
                         title="Delete image"
@@ -379,11 +415,22 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
 
       {/* Create Variant Form */}
       {showVariantForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (e.target === e.currentTarget) {
+              setShowVariantForm(false);
+            }
+          }}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-medium text-gray-900 mb-4">Create New Variant</h3>
             
-            <form onSubmit={handleCreateVariant} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Variant Name *
@@ -395,6 +442,12 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                   onChange={(e) => setVariantFormData({ ...variantFormData, name: e.target.value })}
                   placeholder="e.g., Red, Large"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
                 />
               </div>
 
@@ -407,6 +460,7 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                   value={variantFormData.type}
                   onChange={(e) => setVariantFormData({ ...variantFormData, type: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                  onKeyDown={(e) => e.stopPropagation()}
                 >
                   <option value="color">Color</option>
                   <option value="size">Size</option>
@@ -426,6 +480,12 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                   onChange={(e) => setVariantFormData({ ...variantFormData, value: e.target.value })}
                   placeholder="e.g., red, xl"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
                 />
               </div>
 
@@ -439,6 +499,12 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                   value={variantFormData.priceAdjustment}
                   onChange={(e) => setVariantFormData({ ...variantFormData, priceAdjustment: parseFloat(e.target.value) || 0 })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
                 />
               </div>
 
@@ -453,6 +519,12 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                   value={variantFormData.stockQuantity}
                   onChange={(e) => setVariantFormData({ ...variantFormData, stockQuantity: parseInt(e.target.value) || 0 })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
                 />
               </div>
 
@@ -465,13 +537,18 @@ const ProductImageManager: React.FC<ProductImageManagerProps> = ({ productId, pr
                   Cancel
                 </button>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleCreateVariant(e);
+                  }}
                   className="flex-1 bg-stellamaris-600 text-white py-2 px-4 rounded-md hover:bg-stellamaris-700 transition-colors"
                 >
                   Create Variant
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

@@ -442,8 +442,6 @@ const ProductManagement: React.FC = () => {
       stockQuantity: '0',
       isActive: true,
     });
-    setTempImages([]);
-    setTempVariants([]);
     setEditingProduct(null);
   };
 
