@@ -335,6 +335,18 @@ export default defineSchema({
     .index("by_order_id", ["orderId"])
     .index("by_charity", ["charityOrganizationId"]),
 
+  // Recently viewed products
+  recentlyViewedProducts: defineTable({
+    userId: v.optional(v.id("users")),
+    sessionId: v.optional(v.string()),
+    productId: v.id("products"),
+    viewedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_session", ["sessionId"])
+    .index("by_user_product", ["userId", "productId"])
+    .index("by_session_product", ["sessionId", "productId"]),
+
   // Site settings
   siteSettings: defineTable({
     key: v.string(),

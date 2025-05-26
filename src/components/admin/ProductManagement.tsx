@@ -96,7 +96,7 @@ interface ProductFormData {
   description: string;
   price: string;
   compareAtPrice: string;
-  categoryId: string;
+  categoryId: string; // Using single categoryId to match backend schema
   sustainabilityScore: string;
   materials: string;
   tags: string;
@@ -221,7 +221,7 @@ const ProductManagement: React.FC = () => {
     description: '',
     price: '',
     compareAtPrice: '',
-    categoryId: '',
+    categoryId: '', // Initialize with empty string
     sustainabilityScore: '5',
     materials: '',
     tags: '',

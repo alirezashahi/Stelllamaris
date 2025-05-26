@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Star, Filter, ChevronDown, Leaf, Grid, List, ShoppingCart, Check } from 'lucide-react'
-import { useQuery } from 'convex/react'
+import { Star, Filter, ChevronDown, Leaf, Grid, List, ShoppingCart, Check, FolderOpen, Folder, Heart } from 'lucide-react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { useCart } from '../../contexts/CartContext'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface FilterState {
   categoryId?: Id<"categories">
@@ -22,7 +23,18 @@ const ProductsPage = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [addingToCart, setAddingToCart] = useState<{ [key: string]: boolean }>({})
   const [addedToCart, setAddedToCart] = useState<{ [key: string]: boolean }>({})
+  const [wishlistLoading, setWishlistLoading] = useState<{ [key: string]: boolean }>({})
   const { addToCart } = useCart()
+  const { user, isAuthenticated } = useAuth()
+
+  // Wishlist mutations
+  const toggleWishlist = useMutation(api.wishlist.toggleWishlist)
+  
+  // Get current user's Convex user ID
+  const convexUser = useQuery(
+    api.users.getUserByClerkId,
+    user ? { clerkUserId: user.id } : "skip"
+  )
 
   // Pagination state
   const [paginationOpts, setPaginationOpts] = useState({
@@ -38,6 +50,15 @@ const ProductsPage = () => {
 
   const products = searchResult?.page || []
   const isDone = searchResult?.isDone || false
+
+  // Get categories for filtering
+  const hierarchicalCategories = useQuery(api.categories.getAllCategoriesHierarchical)
+
+  // Get user's wishlist to check which products are favorited
+  const userWishlist = useQuery(
+    api.wishlist.getUserWishlist,
+    convexUser ? { userId: convexUser._id } : "skip"
+  )
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
     setFilters({ ...filters, ...newFilters })
@@ -83,10 +104,35 @@ const ProductsPage = () => {
     }
   }
 
+  const handleWishlistToggle = async (product: any) => {
+    if (!isAuthenticated) {
+      // Redirect to login or show login modal
+      return
+    }
+
+    if (!convexUser) return
+
+    const productKey = product._id
+    setWishlistLoading(prev => ({ ...prev, [productKey]: true }))
+
+    try {
+      await toggleWishlist({
+        userId: convexUser._id,
+        productId: product._id,
+      })
+    } catch (error) {
+      console.error('Failed to toggle wishlist:', error)
+    } finally {
+      setWishlistLoading(prev => ({ ...prev, [productKey]: false }))
+    }
+  }
+
   const ProductCard = ({ product, isListView = false }: { product: any, isListView?: boolean }) => {
     const productKey = product._id
     const isAdding = addingToCart[productKey]
     const wasAdded = addedToCart[productKey]
+    const isWishlistLoading = wishlistLoading[productKey]
+    const isInWishlist = userWishlist?.some(item => item.productId === product._id) || false
     
     return (
       <div className={`product-card group ${isListView ? 'flex gap-6' : ''}`}>
@@ -142,25 +188,49 @@ const ProductsPage = () => {
 
           {/* Actions */}
           <div className={`space-y-2 ${isListView ? 'flex space-y-0 space-x-2' : ''}`}>
-            <button 
-              onClick={() => handleAddToCart(product)}
-              disabled={isAdding}
-              className={`btn-primary ${isListView ? 'flex-1' : 'w-full'} flex items-center justify-center space-x-2 disabled:opacity-50`}
-            >
-              {isAdding ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              ) : wasAdded ? (
-                <>
-                  <Check size={16} />
-                  <span>Added!</span>
-                </>
-              ) : (
-                <>
-                  <ShoppingCart size={16} />
-                  <span>Add to Cart</span>
-                </>
-              )}
-            </button>
+            <div className={`flex gap-2 ${isListView ? '' : 'w-full'}`}>
+              <button 
+                onClick={() => handleAddToCart(product)}
+                disabled={isAdding}
+                className={`btn-primary ${isListView ? 'flex-1' : 'flex-1'} flex items-center justify-center space-x-2 disabled:opacity-50`}
+              >
+                {isAdding ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : wasAdded ? (
+                  <>
+                    <Check size={16} />
+                    <span>Added!</span>
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart size={16} />
+                    <span>Add to Cart</span>
+                  </>
+                )}
+              </button>
+              <div className="relative">
+                <button 
+                  onClick={() => handleWishlistToggle(product)}
+                  disabled={isWishlistLoading || !isAuthenticated}
+                  className="p-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={isInWishlist ? "Remove from Wishlist" : "Add to Wishlist"}
+                >
+                  {isWishlistLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                  ) : (
+                    <Heart 
+                      size={18} 
+                      className={`transition-colors ${
+                        isInWishlist 
+                          ? 'text-red-500 fill-current' 
+                          : 'text-gray-600 hover:text-red-500'
+                      }`} 
+                    />
+                  )}
+                  <span className="sr-only">{isInWishlist ? "Remove from Wishlist" : "Add to Wishlist"}</span>
+                </button>
+              </div>
+            </div>
             <Link 
               to={`/product/${product.slug}`} 
               className={`btn-outline block text-center ${isListView ? 'flex-1' : 'w-full'}`}
@@ -242,30 +312,56 @@ const ProductsPage = () => {
                   </div>
                 </div>
 
-                {/* Material Filter */}
+                {/* Category Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-3">Materials</label>
-                  <div className="space-y-2">
-                    {['Sustainable Vegan Leather', 'Recycled Polyester', 'Cork Leather', 'Upcycled Leather', 'Recycled Canvas', 'Organic Hemp'].map((material) => (
-                      <label key={material} className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={(filters.materials || []).includes(material)}
-                          onChange={(e) => {
-                            const materials = filters.materials || []
-                            if (e.target.checked) {
-                              handleFilterChange({ materials: [...materials, material] })
-                            } else {
-                              handleFilterChange({ materials: materials.filter(m => m !== material) })
-                            }
-                          }}
-                          className="rounded border-gray-300 text-stellamaris-600 focus:ring-stellamaris-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">{material}</span>
-                      </label>
+                  <label className="block text-sm font-medium text-gray-900 mb-3">Categories</label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="category"
+                        checked={!filters.categoryId}
+                        onChange={() => handleFilterChange({ categoryId: undefined })}
+                        className="rounded border-gray-300 text-stellamaris-600 focus:ring-stellamaris-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">All Categories</span>
+                    </label>
+                    
+                    {hierarchicalCategories?.map((parentCategory) => (
+                      <div key={parentCategory._id} className="space-y-1">
+                        {/* Parent Category */}
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="category"
+                            checked={filters.categoryId === parentCategory._id}
+                            onChange={() => handleFilterChange({ categoryId: parentCategory._id })}
+                            className="rounded border-gray-300 text-stellamaris-600 focus:ring-stellamaris-500"
+                          />
+                          <FolderOpen size={14} className="ml-2 mr-1 text-stellamaris-600" />
+                          <span className="text-sm text-gray-700 font-medium">{parentCategory.name}</span>
+                        </label>
+                        
+                        {/* Child Categories */}
+                        {parentCategory.children.map((childCategory) => (
+                          <label key={childCategory._id} className="flex items-center ml-4">
+                            <input
+                              type="radio"
+                              name="category"
+                              checked={filters.categoryId === childCategory._id}
+                              onChange={() => handleFilterChange({ categoryId: childCategory._id })}
+                              className="rounded border-gray-300 text-stellamaris-600 focus:ring-stellamaris-500"
+                            />
+                            <Folder size={12} className="ml-2 mr-1 text-gray-500" />
+                            <span className="text-sm text-gray-600">{childCategory.name}</span>
+                          </label>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </div>
+
+
 
                 {/* Clear Filters */}
                 <button

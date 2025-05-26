@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
+import { Id } from "./_generated/dataModel";
 
 // Get featured products for homepage
 export const getFeaturedProducts = query({
@@ -203,7 +204,6 @@ export const searchProducts = query({
     categoryId: v.optional(v.id("categories")),
     minPrice: v.optional(v.number()),
     maxPrice: v.optional(v.number()),
-    materials: v.optional(v.array(v.string())),
     sortBy: v.optional(v.union(
       v.literal("name"),
       v.literal("price_low_high"),
@@ -264,7 +264,6 @@ export const searchProducts = query({
         // Apply additional filters
         if (args.minPrice && product.basePrice < args.minPrice) return null;
         if (args.maxPrice && product.basePrice > args.maxPrice) return null;
-        if (args.materials && !args.materials.includes(product.material)) return null;
 
         const primaryImage = await ctx.db
           .query("productImages")
@@ -428,7 +427,8 @@ export const createProduct = mutation({
       throw new Error(`A product with slug "${args.slug}" already exists. Please use a different slug.`);
     }
 
-    return await ctx.db.insert("products", {
+    // Create the product
+    const productId = await ctx.db.insert("products", {
       name: args.name,
       slug: args.slug,
       description: args.description,
@@ -447,6 +447,8 @@ export const createProduct = mutation({
       lowStockThreshold: 10,
       totalSales: 0,
     });
+
+    return productId;
   },
 });
 
@@ -770,4 +772,171 @@ export const deleteProductVariant = mutation({
     await ctx.db.delete(args.variantId);
     return null;
   },
-}); 
+});
+
+/**
+ * Track recently viewed products for a user
+ */
+export const trackRecentlyViewedProduct = mutation({
+  args: {
+    userId: v.optional(v.id("users")),
+    productId: v.id("products"),
+    sessionId: v.optional(v.string()), // For guest users
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Check if this product view already exists for this user/session
+    let existingView;
+    
+    if (args.userId) {
+      existingView = await ctx.db
+        .query("recentlyViewedProducts")
+        .withIndex("by_user_product", (q) => 
+          q.eq("userId", args.userId).eq("productId", args.productId)
+        )
+        .first();
+    } else if (args.sessionId) {
+      existingView = await ctx.db
+        .query("recentlyViewedProducts")
+        .withIndex("by_session_product", (q) => 
+          q.eq("sessionId", args.sessionId).eq("productId", args.productId)
+        )
+        .first();
+    }
+
+    if (existingView) {
+      // Update the timestamp
+      await ctx.db.patch(existingView._id, {
+        viewedAt: Date.now(),
+      });
+    } else {
+      // Create new view record
+      await ctx.db.insert("recentlyViewedProducts", {
+        userId: args.userId,
+        sessionId: args.sessionId,
+        productId: args.productId,
+        viewedAt: Date.now(),
+      });
+    }
+
+    // Clean up old entries - keep only last 50 per user/session
+    let allViews;
+    if (args.userId) {
+      allViews = await ctx.db
+        .query("recentlyViewedProducts")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .order("desc")
+        .collect();
+    } else if (args.sessionId) {
+      allViews = await ctx.db
+        .query("recentlyViewedProducts")
+        .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+        .order("desc")
+        .collect();
+    }
+
+    if (allViews && allViews.length > 50) {
+      const toDelete = allViews.slice(50);
+      for (const view of toDelete) {
+        await ctx.db.delete(view._id);
+      }
+    }
+
+    return null;
+  },
+});
+
+/**
+ * Get recently viewed products for a user
+ */
+export const getRecentlyViewedProducts = query({
+  args: {
+    userId: v.optional(v.id("users")),
+    sessionId: v.optional(v.string()),
+    limit: v.optional(v.number()),
+    excludeProductId: v.optional(v.id("products")), // Exclude current product
+  },
+  returns: v.array(v.object({
+    _id: v.id("products"),
+    _creationTime: v.number(),
+    name: v.string(),
+    slug: v.string(),
+    basePrice: v.number(),
+    salePrice: v.optional(v.number()),
+    averageRating: v.optional(v.number()),
+    totalReviews: v.number(),
+    sustainabilityScore: v.optional(v.number()),
+    primaryImageUrl: v.optional(v.string()),
+    viewedAt: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    const limit = args.limit || 8;
+    
+    let recentViews;
+    if (args.userId) {
+      recentViews = await ctx.db
+        .query("recentlyViewedProducts")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .order("desc")
+        .take(limit + 1); // Take one extra in case we need to exclude current product
+    } else if (args.sessionId) {
+      recentViews = await ctx.db
+        .query("recentlyViewedProducts")
+        .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+        .order("desc")
+        .take(limit + 1);
+    } else {
+      return [];
+    }
+
+    // Filter out excluded product and get unique products
+    const uniqueProductIds = new Set<string>();
+    const filteredViews = recentViews.filter(view => {
+      if (args.excludeProductId && view.productId === args.excludeProductId) {
+        return false;
+      }
+      if (uniqueProductIds.has(view.productId)) {
+        return false;
+      }
+      uniqueProductIds.add(view.productId);
+      return true;
+    }).slice(0, limit);
+
+    // Get product details with images
+    const productsWithImages = await Promise.all(
+      filteredViews.map(async (view) => {
+        const product = await ctx.db.get(view.productId);
+        if (!product || product.status !== "active") {
+          return null;
+        }
+
+        const primaryImage = await ctx.db
+          .query("productImages")
+          .withIndex("by_product_id", (q) => q.eq("productId", product._id))
+          .filter((q) => q.eq(q.field("isPrimary"), true))
+          .first();
+
+        return {
+          _id: product._id,
+          _creationTime: product._creationTime,
+          name: product.name,
+          slug: product.slug,
+          basePrice: product.basePrice,
+          salePrice: product.salePrice,
+          averageRating: product.averageRating,
+          totalReviews: product.totalReviews,
+          sustainabilityScore: product.sustainabilityScore,
+          primaryImageUrl: primaryImage?.imageUrl,
+          viewedAt: view.viewedAt,
+        };
+      })
+    );
+
+    // Filter out null products and return
+    return productsWithImages.filter(Boolean) as any[];
+  },
+});
+
+
+
+ 

@@ -7,6 +7,8 @@ import ProductsPage from './components/pages/ProductsPage'
 import ProductDetailPage from './components/pages/ProductDetailPage'
 import CartPage from './components/pages/CartPage'
 import UserAccountPage from './components/pages/UserAccountPage'
+import WishlistPage from './components/pages/WishlistPage'
+import RecentlyViewedPage from './components/pages/RecentlyViewedPage'
 import CheckoutPage from './components/pages/CheckoutPage'
 import OrderConfirmationPage from './components/pages/OrderConfirmationPage'
 import AdminDashboard from './components/admin/AdminDashboard'
@@ -28,8 +30,22 @@ const App = () => {
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/product/:slug" element={<ProductDetailPage />} />
                 <Route path="/cart" element={<CartPage />} />
+                <Route path="/recently-viewed" element={<RecentlyViewedPage />} />
                 <Route path="/checkout" element={<CheckoutPage />} />
                 <Route path="/order-confirmation" element={<OrderConfirmationPage />} />
+                <Route 
+                  path="/wishlist" 
+                  element={
+                    <>
+                      <SignedIn>
+                        <WishlistPage />
+                      </SignedIn>
+                      <SignedOut>
+                        <RedirectToSignIn />
+                      </SignedOut>
+                    </>
+                  } 
+                />
                 <Route 
                   path="/account" 
                   element={

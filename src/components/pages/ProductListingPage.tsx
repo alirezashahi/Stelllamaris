@@ -37,7 +37,6 @@ interface Category {
 interface Filters {
   category: string | null;
   priceRange: { min: number; max: number };
-  materials: string[];
   sustainabilityScore: { min: number; max: number };
   sortBy: 'price-asc' | 'price-desc' | 'name' | 'sustainability' | 'newest';
 }
@@ -51,7 +50,6 @@ const ProductListingPage: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({
     category: null,
     priceRange: { min: 0, max: 2000 },
-    materials: [],
     sustainabilityScore: { min: 1, max: 10 },
     sortBy: 'newest',
   });
@@ -60,17 +58,7 @@ const ProductListingPage: React.FC = () => {
   const products = useQuery(api.products.getAllProducts) as Product[] | undefined;
   const hierarchicalCategories = useQuery(api.categories.getAllCategoriesHierarchical);
 
-  // Get unique materials from products
-  const availableMaterials = useMemo(() => {
-    if (!products) return [];
-    const materials = new Set<string>();
-    products.forEach(product => {
-      if (product.material) {
-        materials.add(product.material);
-      }
-    });
-    return Array.from(materials).sort();
-  }, [products]);
+  // No longer needed since material filtering is removed
 
   // Apply filters and sorting
   const filteredProducts = useMemo(() => {
@@ -88,12 +76,7 @@ const ProductListingPage: React.FC = () => {
         return false;
       }
 
-      // Materials filter
-      if (filters.materials.length > 0 && product.material) {
-        if (!filters.materials.includes(product.material)) {
-          return false;
-        }
-      }
+      // Materials filter removed
 
       // Sustainability score filter
       if (product.sustainabilityScore) {
@@ -141,21 +124,10 @@ const ProductListingPage: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const handleMaterialToggle = (material: string) => {
-    setFilters(prev => ({
-      ...prev,
-      materials: prev.materials.includes(material)
-        ? prev.materials.filter(m => m !== material)
-        : [...prev.materials, material]
-    }));
-    setCurrentPage(1);
-  };
-
   const clearFilters = () => {
     setFilters({
       category: null,
       priceRange: { min: 0, max: 2000 },
-      materials: [],
       sustainabilityScore: { min: 1, max: 10 },
       sortBy: 'newest',
     });
@@ -245,9 +217,9 @@ const ProductListingPage: React.FC = () => {
             >
               <Filter className="h-5 w-5" />
               <span>Filters</span>
-              {(filters.category || filters.materials.length > 0) && (
+              {filters.category && (
                 <span className="bg-stellamaris-100 text-stellamaris-600 text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {(filters.category ? 1 : 0) + filters.materials.length}
+                  1
                 </span>
               )}
             </button>
@@ -260,7 +232,7 @@ const ProductListingPage: React.FC = () => {
             <div className="bg-white rounded-lg shadow-sm p-6 sticky top-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-900">Filters</h3>
-                {(filters.category || filters.materials.length > 0) && (
+                {filters.category && (
                   <button
                     onClick={clearFilters}
                     className="text-sm text-stellamaris-600 hover:text-stellamaris-700"
@@ -308,23 +280,7 @@ const ProductListingPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Materials */}
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-3">Materials</h4>
-                  <div className="space-y-2">
-                    {availableMaterials.map(material => (
-                      <label key={material} className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={filters.materials.includes(material)}
-                          onChange={() => handleMaterialToggle(material)}
-                          className="text-stellamaris-600 focus:ring-stellamaris-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">{material}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+
 
                 {/* Sustainability Score */}
                 <div>

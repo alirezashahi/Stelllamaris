@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { User, Package, Heart, MapPin, Shield, Leaf, Award, Gift, Plus, Edit2, Trash2, CreditCard } from 'lucide-react'
+import { User, Package, Heart, MapPin, Shield, Leaf, Award, Gift, Plus, Edit2, Trash2, CreditCard, ShoppingCart, Check } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useCart } from '../../contexts/CartContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
@@ -39,7 +40,10 @@ const UserAccountPage = () => {
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [editingAddress, setEditingAddress] = useState<Address | null>(null)
   const { user, isAuthenticated } = useAuth()
+  const { addToCart } = useCart()
   const location = useLocation()
+  const [addingToCart, setAddingToCart] = useState<{ [key: string]: boolean }>({})
+  const [addedToCart, setAddedToCart] = useState<{ [key: string]: boolean }>({})
 
   // Convex queries and mutations
   const addresses = useQuery(api.addresses.getUserAddresses, 
@@ -51,6 +55,21 @@ const UserAccountPage = () => {
   const paymentMethods = useQuery(api.paymentMethods.getUserPaymentMethods,
     isAuthenticated && user ? { clerkUserId: user.id } : "skip"
   )
+  
+  // Get current user's Convex user ID
+  const convexUser = useQuery(
+    api.users.getUserByClerkId,
+    user ? { clerkUserId: user.id } : "skip"
+  )
+  
+  // Get user's wishlist
+  const userWishlist = useQuery(
+    api.wishlist.getUserWishlist,
+    convexUser ? { userId: convexUser._id } : "skip"
+  )
+  
+  // Wishlist mutation to remove items
+  const removeFromWishlist = useMutation(api.wishlist.removeFromWishlist)
   const addAddress = useMutation(api.addresses.addAddress)
   const updateAddress = useMutation(api.addresses.updateAddress)
   const deleteAddress = useMutation(api.addresses.deleteAddress)
@@ -185,6 +204,48 @@ const UserAccountPage = () => {
       nameOnCard: '',
       isDefault: false
     })
+  }
+  
+  const handleAddToCart = async (item: any) => {
+    const productKey = item.productId
+    setAddingToCart(prev => ({ ...prev, [productKey]: true }))
+    
+    try {
+      const currentPrice = item.salePrice || item.basePrice
+      
+      // Add to cart with proper cart item structure
+      addToCart({
+        productId: item.productId,
+        productName: item.productName,
+        productSlug: item.productSlug,
+        basePrice: currentPrice,
+        imageUrl: item.primaryImageUrl,
+        quantity: 1
+      })
+
+      // Show success feedback
+      setAddedToCart(prev => ({ ...prev, [productKey]: true }))
+      setTimeout(() => {
+        setAddedToCart(prev => ({ ...prev, [productKey]: false }))
+      }, 2000)
+    } catch (error) {
+      console.error('Failed to add to cart:', error)
+    } finally {
+      setAddingToCart(prev => ({ ...prev, [productKey]: false }))
+    }
+  }
+
+  const handleRemoveFromWishlist = async (item: any) => {
+    if (!convexUser) return
+    
+    try {
+      await removeFromWishlist({
+        userId: convexUser._id,
+        productId: item.productId,
+      })
+    } catch (error) {
+      console.error('Failed to remove from wishlist:', error)
+    }
   }
 
   const TabButton = ({ id, label, icon: Icon, isActive }: {
@@ -874,11 +935,64 @@ const UserAccountPage = () => {
 
               {activeTab === 'wishlist' && (
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">Your Wishlist</h2>
-                  <p className="text-gray-600">Your wishlist is empty. Start adding items you love!</p>
-                  <Link to="/bags" className="bg-stellamaris-600 text-white px-6 py-3 rounded-md hover:bg-stellamaris-700 transition-colors mt-4 inline-block">
-                    Browse Products
-                  </Link>
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-gray-900">Your Wishlist</h2>
+                    <Link to="/wishlist" className="text-stellamaris-600 hover:text-stellamaris-700 text-sm font-medium">
+                      View full wishlist
+                    </Link>
+                  </div>
+                  
+                  {userWishlist && userWishlist.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {userWishlist.slice(0, 3).map((item) => (
+                        <div key={item._id} className="flex border border-gray-200 rounded-lg overflow-hidden">
+                          <Link to={`/product/${item.productSlug}`} className="flex-shrink-0 w-24 h-24">
+                            <img 
+                              src={item.primaryImageUrl || 'https://via.placeholder.com/100'} 
+                              alt={item.productName}
+                              className="w-full h-full object-cover"
+                            />
+                          </Link>
+                          <div className="flex-1 p-3 flex flex-col">
+                            <Link to={`/product/${item.productSlug}`} className="text-gray-900 font-medium hover:text-stellamaris-600 line-clamp-1">
+                              {item.productName}
+                            </Link>
+                            <div className="mt-1 mb-2">
+                              {item.salePrice ? (
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm font-bold">${item.salePrice}</span>
+                                  <span className="text-xs text-gray-500 line-through">${item.basePrice}</span>
+                                </div>
+                              ) : (
+                                <span className="text-sm font-bold">${item.basePrice}</span>
+                              )}
+                            </div>
+                            <div className="mt-auto flex gap-2">
+                              <button 
+                                onClick={() => handleRemoveFromWishlist(item)}
+                                className="text-xs text-gray-600 hover:text-red-500"
+                              >
+                                Remove
+                              </button>
+                              <button
+                                onClick={() => handleAddToCart(item)}
+                                className="text-xs text-stellamaris-600 hover:text-stellamaris-700"
+                              >
+                                Add to cart
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-gray-600">Your wishlist is empty. Start adding items you love!</p>
+                      <Link to="/bags" className="bg-stellamaris-600 text-white px-6 py-3 rounded-md hover:bg-stellamaris-700 transition-colors mt-4 inline-block">
+                        Browse Products
+                      </Link>
+                    </>
+                  )}
                 </div>
               )}
 
