@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { User, Package, Heart, MapPin, Shield, Leaf, Award, Gift, Plus, Edit2, Trash2, CreditCard, ShoppingCart, Check } from 'lucide-react'
+import { User, Package, Heart, MapPin, Shield, Leaf, Award, Gift, Plus, Edit2, Trash2, CreditCard, ShoppingCart, Check, RotateCcw, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useCart } from '../../contexts/CartContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
+import ReturnRequestForm from '../returns/ReturnRequestForm'
 
 interface Address {
   _id: Id<"userAddresses">
@@ -44,6 +45,10 @@ const UserAccountPage = () => {
   const location = useLocation()
   const [addingToCart, setAddingToCart] = useState<{ [key: string]: boolean }>({})
   const [addedToCart, setAddedToCart] = useState<{ [key: string]: boolean }>({})
+  
+  // Return request state
+  const [showReturnRequestForm, setShowReturnRequestForm] = useState(false)
+  const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<any>(null)
 
   // Convex queries and mutations
   const addresses = useQuery(api.addresses.getUserAddresses, 
@@ -65,6 +70,12 @@ const UserAccountPage = () => {
   // Get user's wishlist
   const userWishlist = useQuery(
     api.wishlist.getUserWishlist,
+    convexUser ? { userId: convexUser._id } : "skip"
+  )
+  
+  // Get user's return requests
+  const userReturnRequests = useQuery(
+    api.returns.getUserReturnRequests,
     convexUser ? { userId: convexUser._id } : "skip"
   )
   
@@ -246,6 +257,43 @@ const UserAccountPage = () => {
     } catch (error) {
       console.error('Failed to remove from wishlist:', error)
     }
+  }
+
+  const handleOpenReturnRequest = (order: any) => {
+    setSelectedOrderForReturn(order)
+    setShowReturnRequestForm(true)
+  }
+
+  const handleReturnRequestSuccess = () => {
+    setShowReturnRequestForm(false)
+    setSelectedOrderForReturn(null)
+    // Optionally show success message
+    alert('Return request submitted successfully! We will review your request within 24-48 hours.')
+  }
+
+  const handleReturnRequestCancel = () => {
+    setShowReturnRequestForm(false)
+    setSelectedOrderForReturn(null)
+  }
+
+  const canRequestReturn = (order: any) => {
+    // Only delivered orders can be returned
+    if (order.status !== 'delivered') return false
+    
+    // Check if order is within return window (30 days)
+    const deliveredDate = order.deliveredAt || order._creationTime
+    const daysSinceDelivery = (Date.now() - deliveredDate) / (1000 * 60 * 60 * 24)
+    
+    return daysSinceDelivery <= 30
+  }
+
+  const hasExistingReturnRequest = (orderId: Id<"orders">) => {
+    if (!userReturnRequests) return false
+    
+    return userReturnRequests.some(request => 
+      request.orderId === orderId && 
+      ['pending', 'approved', 'processing'].includes(request.status)
+    )
   }
 
   const TabButton = ({ id, label, icon: Icon, isActive }: {
@@ -918,6 +966,56 @@ const UserAccountPage = () => {
                             <span className="text-lg font-semibold text-gray-900">Total:</span>
                             <span className="text-lg font-semibold text-gray-900">${order.totalAmount.toFixed(2)}</span>
                           </div>
+
+                          {/* Return Request Actions for Delivered Orders */}
+                          {order.status === 'delivered' && convexUser && (
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-medium text-gray-900">Return or Dispute</h4>
+                                {canRequestReturn(order) && (
+                                  <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                                    Return window open ({Math.max(0, 30 - Math.floor((Date.now() - (order.deliveredAt || order._creationTime)) / (1000 * 60 * 60 * 24)))} days left)
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="space-y-2">
+                                {hasExistingReturnRequest(order._id) ? (
+                                  <div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    <span>Return request already submitted for this order</span>
+                                  </div>
+                                ) : canRequestReturn(order) ? (
+                                  <div className="flex space-x-3">
+                                    <button
+                                      onClick={() => handleOpenReturnRequest(order)}
+                                      className="flex items-center space-x-2 bg-stellamaris-600 text-white px-4 py-2 rounded-lg hover:bg-stellamaris-700 text-sm transition-colors"
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                      <span>Request Return</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleOpenReturnRequest({ ...order, disputeMode: true })}
+                                      className="flex items-center space-x-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 text-sm transition-colors"
+                                    >
+                                      <AlertTriangle className="h-4 w-4" />
+                                      <span>Open Dispute</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
+                                    Return window expired (30 days from delivery). 
+                                    <button
+                                      onClick={() => handleOpenReturnRequest({ ...order, disputeMode: true })}
+                                      className="text-amber-600 hover:text-amber-700 ml-1 underline"
+                                    >
+                                      Open a dispute instead
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1013,6 +1111,20 @@ const UserAccountPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Return Request Form Modal */}
+      {showReturnRequestForm && selectedOrderForReturn && convexUser && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-y-auto w-full">
+            <ReturnRequestForm
+              order={selectedOrderForReturn}
+              userId={convexUser._id}
+              onSuccess={handleReturnRequestSuccess}
+              onCancel={handleReturnRequestCancel}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -23,6 +23,7 @@ import type * as orders from "../orders.js";
 import type * as paymentMethods from "../paymentMethods.js";
 import type * as products from "../products.js";
 import type * as promoCodes from "../promoCodes.js";
+import type * as returns from "../returns.js";
 import type * as reviews from "../reviews.js";
 import type * as sampleData from "../sampleData.js";
 import type * as sampleVariantData from "../sampleVariantData.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   paymentMethods: typeof paymentMethods;
   products: typeof products;
   promoCodes: typeof promoCodes;
+  returns: typeof returns;
   reviews: typeof reviews;
   sampleData: typeof sampleData;
   sampleVariantData: typeof sampleVariantData;

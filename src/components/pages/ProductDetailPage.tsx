@@ -5,6 +5,7 @@ import { api } from '../../../convex/_generated/api';
 import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight, Image, Palette, Check, Share2, Copy, MessageCircle } from 'lucide-react';
 import { Id } from '../../../convex/_generated/dataModel';
 import ReviewSection from '../reviews/ReviewSection';
+import ReturnPolicy from '../policies/ReturnPolicy';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -620,6 +621,9 @@ const ProductDetailPage: React.FC = () => {
                 <p className="text-sm text-gray-600">{product.careInstructions}</p>
               </div>
             )}
+
+            {/* Return Policy */}
+            <ReturnPolicy compact={true} showTitle={false} />
 
             {/* Share this product */}
             <div>

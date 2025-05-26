@@ -477,4 +477,6 @@ export const getCustomerStats = query({
       customerLifetimeValue,
     };
   },
-}); 
+});
+
+ 

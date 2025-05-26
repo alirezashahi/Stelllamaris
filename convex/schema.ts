@@ -347,6 +347,62 @@ export default defineSchema({
     .index("by_user_product", ["userId", "productId"])
     .index("by_session_product", ["sessionId", "productId"]),
 
+  // Return requests
+  returnRequests: defineTable({
+    orderId: v.id("orders"),
+    userId: v.id("users"),
+    type: v.union(
+      v.literal("return"), 
+      v.literal("exchange"), 
+      v.literal("refund"), 
+      v.literal("dispute")
+    ),
+    reason: v.union(
+      v.literal("defective"),
+      v.literal("wrong_item"),
+      v.literal("not_as_described"),
+      v.literal("change_of_mind"),
+      v.literal("damaged_in_shipping"),
+      v.literal("size_issue"),
+      v.literal("quality_issue"),
+      v.literal("other")
+    ),
+    description: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("cancelled")
+    ),
+    requestedAmount: v.optional(v.number()),
+    approvedAmount: v.optional(v.number()),
+    rmaNumber: v.optional(v.string()),
+    trackingNumber: v.optional(v.string()),
+    adminNotes: v.optional(v.string()),
+    customerNotes: v.optional(v.string()),
+    
+    // Selected items for return (if partial return)
+    returnItems: v.array(v.object({
+      orderItemIndex: v.number(), // Reference to order item
+      quantity: v.number(),
+      reason: v.string(),
+    })),
+    
+    // Evidence attachments
+    evidenceUrls: v.optional(v.array(v.string())),
+    
+    // Timeline tracking
+    submittedAt: v.number(),
+    reviewedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_order_id", ["orderId"])
+    .index("by_user_id", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_type", ["type"]),
+
   // Site settings
   siteSettings: defineTable({
     key: v.string(),

@@ -11,6 +11,8 @@ import WishlistPage from './components/pages/WishlistPage'
 import RecentlyViewedPage from './components/pages/RecentlyViewedPage'
 import CheckoutPage from './components/pages/CheckoutPage'
 import OrderConfirmationPage from './components/pages/OrderConfirmationPage'
+import ShippingReturnsPage from './components/pages/ShippingReturnsPage'
+import FAQPage from './components/pages/FAQPage'
 import AdminDashboard from './components/admin/AdminDashboard'
 import { CartProvider } from './contexts/CartContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -69,6 +71,8 @@ const App = () => {
                 <Route path="/recently-viewed" element={<RecentlyViewedPage />} />
                 <Route path="/checkout" element={<CheckoutPage />} />
                 <Route path="/order-confirmation" element={<OrderConfirmationPage />} />
+                <Route path="/shipping-returns" element={<ShippingReturnsPage />} />
+                <Route path="/faq" element={<FAQPage />} />
                 <Route 
                   path="/wishlist" 
                   element={
