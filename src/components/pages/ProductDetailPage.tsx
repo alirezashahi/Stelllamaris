@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -11,6 +11,7 @@ const ProductDetailPage: React.FC = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, Id<"productVariants">>>({});
   const [imageMode, setImageMode] = useState<'general' | 'variant'>('general');
+  const prevSelectedColorVariantRef = useRef<Id<"productVariants"> | undefined>();
 
   // Get product by slug
   const products = useQuery(api.products.getAllProducts);
@@ -49,24 +50,29 @@ const ProductDetailPage: React.FC = () => {
 
   // Determine which images to display based on mode and availability
   const displayImages = (() => {
-    if (imageMode === 'variant' && variantImages?.length) {
-      return variantImages;
-    } else if (imageMode === 'general' && productImages?.length) {
-      return productImages;
-    } else if (productImages?.length) {
-      return productImages;
-    } else if (variantImages?.length) {
-      return variantImages;
+    if (imageMode === 'variant') {
+      // If in variant mode, attempt to show variantImages.
+      // These are fetched based on selectedColorVariant.
+      // If they are not available (null, undefined, or empty array), show empty.
+      return (selectedColorVariant && variantImages?.length) ? variantImages : [];
+    } else { // imageMode === 'general'
+      // If in general mode, attempt to show productImages.
+      // If not available, show empty.
+      return productImages?.length ? productImages : [];
     }
-    return [];
   })();
 
-  // Auto-switch to variant mode when color variant is selected (but don't force it)
+  // Auto-switch to variant mode when a new color variant with images is selected
   useEffect(() => {
-    if (selectedColorVariant && variantImages?.length && imageMode === 'general') {
+    if (selectedColorVariant && selectedColorVariant !== prevSelectedColorVariantRef.current) {
+      // A new color variant has been selected.
+      // Switch to 'variant' mode. displayImages will handle showing images if they exist.
       setImageMode('variant');
+      setSelectedImageIndex(0); // Reset index for the new set of images
     }
-  }, [selectedColorVariant, variantImages?.length, imageMode]);
+    // Update the ref *after* processing to correctly detect a change next time.
+    prevSelectedColorVariantRef.current = selectedColorVariant;
+  }, [selectedColorVariant]);
 
   // Reset image index when images change
   useEffect(() => {
@@ -77,6 +83,7 @@ const ProductDetailPage: React.FC = () => {
   useEffect(() => {
     if (!selectedColorVariant) {
       setImageMode('general');
+      setSelectedImageIndex(0); // Reset index when clearing color variant
     }
   }, [selectedColorVariant]);
 
@@ -148,7 +155,7 @@ const ProductDetailPage: React.FC = () => {
 
   const availableStock = getSelectedVariantStock();
 
-      return (    <div className="container mx-auto px-4 py-8">      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">        {/* Image Gallery */}        <div className="space-y-4">          {/* Image Mode Toggle */}          {productImages && productImages.length > 0 && variantImages && variantImages.length > 0 && selectedColorVariant && (            <div className="flex space-x-2 mb-4">              <button                onClick={() => setImageMode('general')}                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${                  imageMode === 'general'                    ? 'bg-stellamaris-600 text-white'                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'                }`}              >                <Image className="h-4 w-4" />                <span>General Photos ({productImages.length})</span>              </button>              <button                onClick={() => setImageMode('variant')}                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${                  imageMode === 'variant'                    ? 'bg-stellamaris-600 text-white'                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'                }`}              >                <Palette className="h-4 w-4" />                <span>{productVariants?.find(v => v._id === selectedColorVariant)?.name} Photos ({variantImages.length})</span>              </button>            </div>          )}          {/* Main Image */}          <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
+      return (    <div className="container mx-auto px-4 py-8">      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">        {/* Image Gallery */}        <div className="space-y-4">          {/* Main Image */}          <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
             {selectedImage ? (
               <img
                 src={selectedImage.imageUrl}
@@ -167,12 +174,14 @@ const ProductDetailPage: React.FC = () => {
                 <button
                   onClick={handlePreviousImage}
                   className="absolute left-4 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 p-2 rounded-full shadow-lg transition-all"
+                  aria-label="Previous image"
                 >
                   <ChevronLeft className="h-5 w-5 text-gray-700" />
                 </button>
                 <button
                   onClick={handleNextImage}
                   className="absolute right-4 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 p-2 rounded-full shadow-lg transition-all"
+                  aria-label="Next image"
                 >
                   <ChevronRight className="h-5 w-5 text-gray-700" />
                 </button>
@@ -201,10 +210,11 @@ const ProductDetailPage: React.FC = () => {
                       ? 'border-stellamaris-500'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
+                  aria-label={`View image ${index + 1} of ${product.name}${image.altText ? ': ' + image.altText : ''}`}
                 >
                   <img
                     src={image.imageUrl}
-                    alt={image.altText || `${product.name} ${index + 1}`}
+                    alt={image.altText || `${product.name} thumbnail ${index + 1}`}
                     className="w-full h-full object-cover"
                   />
                   {image.isPrimary && (
@@ -214,6 +224,34 @@ const ProductDetailPage: React.FC = () => {
                   )}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Image Mode Switch Buttons */}
+          {((imageMode === 'variant' && productImages?.length > 0 && selectedColorVariant) ||
+            (imageMode === 'general' && selectedColorVariant && variantImages?.length > 0 && productImages?.length > 0)
+          ) && (
+            <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+              {imageMode === 'variant' && productImages && productImages.length > 0 && selectedColorVariant && (
+                <button
+                  onClick={() => { setImageMode('general'); setSelectedImageIndex(0); }}
+                  className="w-full flex items-center justify-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  aria-label={`View general product photos. Currently showing ${productVariants?.find(v => v._id === selectedColorVariant)?.name} photos.`}
+                >
+                  <Image className="h-4 w-4" />
+                  <span>View General Photos ({productImages.length})</span>
+                </button>
+              )}
+              {imageMode === 'general' && selectedColorVariant && variantImages && variantImages.length > 0 && productImages && productImages.length > 0 && (
+                <button
+                  onClick={() => { setImageMode('variant'); setSelectedImageIndex(0); }}
+                  className="w-full flex items-center justify-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  aria-label={`View photos for ${productVariants?.find(v => v._id === selectedColorVariant)?.name}. Currently showing general photos.`}
+                >
+                  <Palette className="h-4 w-4" />
+                  <span>View {productVariants?.find(v => v._id === selectedColorVariant)?.name} Photos ({variantImages.length})</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -252,6 +290,7 @@ const ProductDetailPage: React.FC = () => {
                           ? 'text-yellow-400 fill-current'
                           : 'text-gray-300'
                       }`}
+                      aria-hidden="true" // Decorative stars
                     />
                   ))}
                 </div>
@@ -287,6 +326,8 @@ const ProductDetailPage: React.FC = () => {
                             : ''
                         }`}
                         disabled={variant.stockQuantity === 0}
+                        aria-pressed={selectedVariants[type] === variant._id}
+                        aria-label={`Select ${type}: ${variant.name}${variant.priceAdjustment !== 0 ? ` (${variant.priceAdjustment > 0 ? '+' : ''}$${variant.priceAdjustment.toFixed(2)})` : ''}${variant.stockQuantity === 0 ? ' (Out of stock)' : ''}`}
                       >
                         {variant.name}
                         {variant.priceAdjustment !== 0 && (
@@ -322,7 +363,7 @@ const ProductDetailPage: React.FC = () => {
               <div>
                 <span className="text-sm font-medium text-gray-900">Sustainability:</span>
                 <div className="flex items-center space-x-1">
-                  <Star className="h-4 w-4 text-green-500" />
+                  <Star className="h-4 w-4 text-green-500" aria-hidden="true" />
                   <span className="text-sm text-green-600 font-medium">
                     {product.sustainabilityScore}/10
                   </span>
@@ -351,6 +392,7 @@ const ProductDetailPage: React.FC = () => {
               <button
                 disabled={availableStock === 0}
                 className="flex-1 bg-stellamaris-600 text-white py-3 px-6 rounded-lg hover:bg-stellamaris-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+                aria-label={availableStock === 0 ? 'Product is out of stock' : 'Add to cart'}
               >
                 <ShoppingCart className="h-5 w-5" />
                 <span>
@@ -358,7 +400,10 @@ const ProductDetailPage: React.FC = () => {
                 </span>
               </button>
               
-              <button className="p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              <button 
+                className="p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                aria-label="Add to wishlist"
+              >
                 <Heart className="h-5 w-5 text-gray-600" />
               </button>
             </div>
@@ -399,7 +444,7 @@ const ProductDetailPage: React.FC = () => {
               <ul className="space-y-2">
                 {product.sustainableFeatures.map((feature, index) => (
                   <li key={index} className="flex items-center space-x-2">
-                    <Star className="h-4 w-4 text-green-500" />
+                    <Star className="h-4 w-4 text-green-500" aria-hidden="true"/>
                     <span className="text-sm text-gray-700">{feature}</span>
                   </li>
                 ))}

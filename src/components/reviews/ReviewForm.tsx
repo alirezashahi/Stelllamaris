@@ -159,7 +159,27 @@ const ReviewForm: React.FC<ReviewFormProps> = ({
 
       onSubmitted()
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to ${editingReview ? 'update' : 'submit'} review`)
+      // Clean up error messages to be more user-friendly
+      let userFriendlyError = `Failed to ${editingReview ? 'update' : 'submit'} review`
+      
+      if (err instanceof Error) {
+        const errorMessage = err.message.toLowerCase()
+        
+        if (errorMessage.includes('you can only review products you have purchased')) {
+          userFriendlyError = 'You can only review products you have purchased and received.'
+        } else if (errorMessage.includes('already reviewed')) {
+          userFriendlyError = 'You have already reviewed this product. You can edit your existing review instead.'
+        } else if (errorMessage.includes('not found')) {
+          userFriendlyError = 'Product not found. Please try again.'
+        } else if (errorMessage.includes('unauthorized') || errorMessage.includes('permission')) {
+          userFriendlyError = 'You do not have permission to perform this action.'
+        } else {
+          // For any other errors, use a generic message
+          userFriendlyError = `Failed to ${editingReview ? 'update' : 'submit'} review. Please try again.`
+        }
+      }
+      
+      setError(userFriendlyError)
     } finally {
       setIsSubmitting(false)
     }
