@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { Package, Users, ShoppingBag, TrendingUp, Settings, Percent } from 'lucide-react'
+import { Package, Users, ShoppingBag, TrendingUp, Settings, Percent, RotateCcw } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import OrderManagement from './OrderManagement'
 import PromoCodeManagement from './PromoCodeManagement'
 import ProductManagement from './ProductManagement'
 import CustomerManagement from './CustomerManagement'
+import ReturnManagement from './ReturnManagement'
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('orders')
@@ -116,6 +117,12 @@ const AdminDashboard: React.FC = () => {
                   isActive={activeTab === 'promo-codes'}
                 />
                 <TabButton
+                  id="returns"
+                  label="Returns"
+                  icon={RotateCcw}
+                  isActive={activeTab === 'returns'}
+                />
+                <TabButton
                   id="users"
                   label="Users"
                   icon={Users}
@@ -139,6 +146,8 @@ const AdminDashboard: React.FC = () => {
               {activeTab === 'products' && <ProductManagement />}
 
               {activeTab === 'promo-codes' && <PromoCodeManagement />}
+
+              {activeTab === 'returns' && <ReturnManagement />}
               
               {activeTab === 'users' && <CustomerManagement />}
               

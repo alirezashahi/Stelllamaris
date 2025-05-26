@@ -106,23 +106,16 @@ export const canRequestReturnForOrder = query({
       return { canReturn: false, reason: "Order not found or access denied" };
     }
 
-    // Check if there's already an active return request
+    // Check if there's already ANY return request for this order (user can only submit 1 return request per purchase)
     const existingRequest = await ctx.db
       .query("returnRequests")
       .withIndex("by_order_id", (q) => q.eq("orderId", args.orderId))
-      .filter((q) => 
-        q.or(
-          q.eq(q.field("status"), "pending"),
-          q.eq(q.field("status"), "approved"),
-          q.eq(q.field("status"), "processing")
-        )
-      )
       .first();
 
     if (existingRequest) {
       return { 
         canReturn: false, 
-        reason: "Return request already exists for this order",
+        reason: "You have already submitted a return request for this order. Only one return request is allowed per purchase.",
         existingRequest: existingRequest._id
       };
     }
@@ -143,7 +136,7 @@ export const createReturnRequest = mutation({
   args: {
     orderId: v.id("orders"),
     userId: v.id("users"),
-    type: v.union(v.literal("return"), v.literal("exchange"), v.literal("refund"), v.literal("dispute")),
+    type: v.literal("return"), // Only allow 'return' type
     reason: v.union(
       v.literal("defective"),
       v.literal("wrong_item"),
@@ -161,7 +154,7 @@ export const createReturnRequest = mutation({
       reason: v.string(),
     })),
     requestedAmount: v.optional(v.number()),
-    evidenceUrls: v.optional(v.array(v.string())),
+    evidenceUrls: v.array(v.string()), // Make evidence URLs required
   },
   returns: v.id("returnRequests"),
   handler: async (ctx, args) => {
@@ -171,27 +164,25 @@ export const createReturnRequest = mutation({
       throw new Error("Order not found or access denied");
     }
 
+    // Validate evidence URLs are provided
+    if (!args.evidenceUrls || args.evidenceUrls.length === 0) {
+      throw new Error("At least one evidence image is required for return requests");
+    }
+
     // Check return eligibility
     const eligibility = canRequestReturn(order);
     if (!eligibility.canReturn) {
       throw new Error(eligibility.reason || "Return not allowed");
     }
 
-    // Check for existing active return request
+    // Check for existing return request (user can only submit 1 return request per purchase)
     const existingRequest = await ctx.db
       .query("returnRequests")
       .withIndex("by_order_id", (q) => q.eq("orderId", args.orderId))
-      .filter((q) => 
-        q.or(
-          q.eq(q.field("status"), "pending"),
-          q.eq(q.field("status"), "approved"),
-          q.eq(q.field("status"), "processing")
-        )
-      )
       .first();
 
     if (existingRequest) {
-      throw new Error("Return request already exists for this order");
+      throw new Error("You have already submitted a return request for this order. Only one return request is allowed per purchase.");
     }
 
     // Generate RMA number
@@ -375,5 +366,356 @@ export const cancelReturnRequest = mutation({
     });
 
     return args.returnRequestId;
+  },
+});
+
+/**
+ * Delete return request (user - only pending requests)
+ */
+export const deleteReturnRequest = mutation({
+  args: {
+    returnRequestId: v.id("returnRequests"),
+    userId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const returnRequest = await ctx.db.get(args.returnRequestId);
+    
+    if (!returnRequest || returnRequest.userId !== args.userId) {
+      throw new Error("Return request not found or access denied");
+    }
+
+    if (returnRequest.status !== "pending") {
+      throw new Error("Can only delete pending return requests");
+    }
+
+    // Delete all messages associated with this return request
+    const messages = await ctx.db
+      .query("returnMessages")
+      .withIndex("by_return_request", (q) => q.eq("returnRequestId", args.returnRequestId))
+      .collect();
+
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
+
+    // Delete the return request
+    await ctx.db.delete(args.returnRequestId);
+    return null;
+  },
+});
+
+/**
+ * Get messages for a return request
+ */
+export const getReturnMessages = query({
+  args: { 
+    returnRequestId: v.id("returnRequests"),
+    userId: v.id("users")
+  },
+  returns: v.array(v.object({
+    _id: v.id("returnMessages"),
+    _creationTime: v.number(),
+    senderId: v.id("users"),
+    senderType: v.string(),
+    senderName: v.string(),
+    message: v.string(),
+    messageType: v.string(),
+    isRead: v.boolean(),
+    attachments: v.optional(v.array(v.string())),
+  })),
+  handler: async (ctx, args) => {
+    // Verify user has access to this return request
+    const returnRequest = await ctx.db.get(args.returnRequestId);
+    if (!returnRequest || returnRequest.userId !== args.userId) {
+      throw new Error("Access denied");
+    }
+
+    const messages = await ctx.db
+      .query("returnMessages")
+      .withIndex("by_return_request", (q) => q.eq("returnRequestId", args.returnRequestId))
+      .order("asc")
+      .collect();
+
+    // Enrich with sender information
+    const enrichedMessages = await Promise.all(
+      messages.map(async (message) => {
+        const sender = await ctx.db.get(message.senderId);
+        return {
+          _id: message._id,
+          _creationTime: message._creationTime,
+          senderId: message.senderId,
+          senderType: message.senderType,
+          senderName: sender?.name || "Unknown",
+          message: message.message,
+          messageType: message.messageType,
+          isRead: message.isRead,
+          attachments: message.attachments,
+        };
+      })
+    );
+
+    // Note: Messages are marked as read via separate mutation
+
+    return enrichedMessages;
+  },
+});
+
+/**
+ * Get messages for a return request (admin view)
+ */
+export const getReturnMessagesAdmin = query({
+  args: { 
+    returnRequestId: v.id("returnRequests")
+  },
+  returns: v.array(v.object({
+    _id: v.id("returnMessages"),
+    _creationTime: v.number(),
+    senderId: v.id("users"),
+    senderType: v.string(),
+    senderName: v.string(),
+    message: v.string(),
+    messageType: v.string(),
+    isRead: v.boolean(),
+    attachments: v.optional(v.array(v.string())),
+  })),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+
+    const messages = await ctx.db
+      .query("returnMessages")
+      .withIndex("by_return_request", (q) => q.eq("returnRequestId", args.returnRequestId))
+      .order("asc")
+      .collect();
+
+    // Enrich with sender information
+    const enrichedMessages = await Promise.all(
+      messages.map(async (message) => {
+        const sender = await ctx.db.get(message.senderId);
+        return {
+          _id: message._id,
+          _creationTime: message._creationTime,
+          senderId: message.senderId,
+          senderType: message.senderType,
+          senderName: sender?.name || "Unknown",
+          message: message.message,
+          messageType: message.messageType,
+          isRead: message.isRead,
+          attachments: message.attachments,
+        };
+      })
+    );
+
+    // Note: Messages are marked as read via separate mutation
+
+    return enrichedMessages;
+  },
+});
+
+/**
+ * Send a message in a return request
+ */
+export const sendReturnMessage = mutation({
+  args: {
+    returnRequestId: v.id("returnRequests"),
+    senderId: v.id("users"),
+    message: v.string(),
+    messageType: v.optional(v.union(v.literal("text"), v.literal("status_update"), v.literal("admin_response"))),
+    attachments: v.optional(v.array(v.string())),
+  },
+  returns: v.id("returnMessages"),
+  handler: async (ctx, args) => {
+    // Verify user has access to this return request
+    const returnRequest = await ctx.db.get(args.returnRequestId);
+    if (!returnRequest) {
+      throw new Error("Return request not found");
+    }
+
+    // Determine sender type
+    const sender = await ctx.db.get(args.senderId);
+    if (!sender) {
+      throw new Error("Sender not found");
+    }
+
+    // Check if sender is customer or admin
+    const senderType = sender.role === "admin" ? "admin" : "customer";
+    
+    // Verify access: customers can only send messages to their own return requests
+    if (senderType === "customer" && returnRequest.userId !== args.senderId) {
+      throw new Error("Access denied");
+    }
+
+    const messageId = await ctx.db.insert("returnMessages", {
+      returnRequestId: args.returnRequestId,
+      senderId: args.senderId,
+      senderType,
+      message: args.message,
+      messageType: args.messageType || "text",
+      isRead: false,
+      attachments: args.attachments,
+    });
+
+    return messageId;
+  },
+});
+
+/**
+ * Get unread message count for user's return requests
+ */
+export const getUnreadReturnMessageCount = query({
+  args: { userId: v.id("users") },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    // Get all return requests for user
+    const returnRequests = await ctx.db
+      .query("returnRequests")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    let unreadCount = 0;
+    
+    for (const request of returnRequests) {
+      const unreadMessages = await ctx.db
+        .query("returnMessages")
+        .withIndex("by_return_and_read", (q) => 
+          q.eq("returnRequestId", request._id).eq("isRead", false)
+        )
+        .filter((q) => q.eq(q.field("senderType"), "admin"))
+        .collect();
+      
+      unreadCount += unreadMessages.length;
+    }
+
+    return unreadCount;
+  },
+});
+
+/**
+ * Mark messages as read for a return request (user marking admin messages as read)
+ */
+export const markReturnMessagesAsRead = mutation({
+  args: {
+    returnRequestId: v.id("returnRequests"),
+    userId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Verify user has access to this return request
+    const returnRequest = await ctx.db.get(args.returnRequestId);
+    if (!returnRequest || returnRequest.userId !== args.userId) {
+      throw new Error("Access denied");
+    }
+
+    // Get unread admin messages
+    const unreadAdminMessages = await ctx.db
+      .query("returnMessages")
+      .withIndex("by_return_and_read", (q) => 
+        q.eq("returnRequestId", args.returnRequestId).eq("isRead", false)
+      )
+      .filter((q) => q.eq(q.field("senderType"), "admin"))
+      .collect();
+
+    // Mark them as read
+    for (const message of unreadAdminMessages) {
+      await ctx.db.patch(message._id, { isRead: true });
+    }
+
+    return null;
+  },
+});
+
+/**
+ * Mark customer messages as read (admin)
+ */
+export const markCustomerMessagesAsRead = mutation({
+  args: {
+    returnRequestId: v.id("returnRequests"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+
+    // Get unread customer messages
+    const unreadCustomerMessages = await ctx.db
+      .query("returnMessages")
+      .withIndex("by_return_and_read", (q) => 
+        q.eq("returnRequestId", args.returnRequestId).eq("isRead", false)
+      )
+      .filter((q) => q.eq(q.field("senderType"), "customer"))
+      .collect();
+
+    // Mark them as read
+    for (const message of unreadCustomerMessages) {
+      await ctx.db.patch(message._id, { isRead: true });
+    }
+
+    return null;
+  },
+});
+
+/**
+ * Get the first available admin user for system operations
+ */
+export const getSystemAdminUser = query({
+  args: {},
+  returns: v.union(v.id("users"), v.null()),
+  handler: async (ctx, args) => {
+    const adminUser = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "admin"))
+      .first();
+    
+    return adminUser?._id || null;
+  },
+});
+
+/**
+ * Get unread customer message counts for all return requests (admin view)
+ */
+export const getUnreadCustomerMessageCounts = query({
+  args: {},
+  returns: v.object({
+    total: v.number(),
+    byReturnRequest: v.array(v.object({
+      returnRequestId: v.id("returnRequests"),
+      unreadCount: v.number(),
+    })),
+  }),
+  handler: async (ctx, args) => {
+    // TODO: Add admin role check when authentication is fully implemented
+
+    // Get all return requests
+    const returnRequests = await ctx.db
+      .query("returnRequests")
+      .order("desc")
+      .collect();
+
+    let totalUnread = 0;
+    const byReturnRequest = [];
+
+    for (const request of returnRequests) {
+      const unreadMessages = await ctx.db
+        .query("returnMessages")
+        .withIndex("by_return_and_read", (q) => 
+          q.eq("returnRequestId", request._id).eq("isRead", false)
+        )
+        .filter((q) => q.eq(q.field("senderType"), "customer"))
+        .collect();
+
+      const unreadCount = unreadMessages.length;
+      totalUnread += unreadCount;
+
+      if (unreadCount > 0) {
+        byReturnRequest.push({
+          returnRequestId: request._id,
+          unreadCount,
+        });
+      }
+    }
+
+    return {
+      total: totalUnread,
+      byReturnRequest,
+    };
   },
 }); 

@@ -11,7 +11,6 @@ interface Order {
   status: string;
   totalAmount: number;
   deliveredAt?: number;
-  disputeMode?: boolean;
   items: Array<{
     productName: string;
     variantName?: string;
@@ -35,7 +34,7 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
   onCancel
 }) => {
   const [formData, setFormData] = useState({
-    type: (order.disputeMode ? 'dispute' : 'return') as 'return' | 'exchange' | 'refund' | 'dispute',
+    type: 'return' as 'return',
     reason: 'defective' as string,
     description: '',
     returnItems: order.items.map((_, index) => ({
@@ -43,7 +42,6 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
       quantity: 0,
       reason: ''
     })),
-    requestedAmount: undefined as number | undefined,
     evidenceUrls: [] as string[]
   });
 
@@ -121,6 +119,12 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
       return;
     }
 
+    // Require at least one evidence image
+    if (formData.evidenceUrls.length === 0) {
+      setSubmitError('Please upload at least one image showing the issue');
+      return;
+    }
+
     try {
       await createReturnRequest({
         orderId: order._id,
@@ -129,8 +133,7 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
         reason: formData.reason as any,
         description: formData.description,
         returnItems: selectedItems,
-        requestedAmount: formData.requestedAmount,
-        evidenceUrls: formData.evidenceUrls.length > 0 ? formData.evidenceUrls : undefined,
+        evidenceUrls: formData.evidenceUrls,
       });
 
       onSuccess();
@@ -149,13 +152,6 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
     { value: 'quality_issue', label: 'Quality not as expected' },
     { value: 'change_of_mind', label: 'Changed my mind' },
     { value: 'other', label: 'Other reason' }
-  ];
-
-  const typeOptions = [
-    { value: 'return', label: 'Return for Refund', description: 'Return items for a full refund' },
-    { value: 'exchange', label: 'Exchange', description: 'Exchange for different size/color' },
-    { value: 'refund', label: 'Partial Refund', description: 'Keep items but request partial refund' },
-    { value: 'dispute', label: 'Dispute', description: 'Report an issue for investigation' }
   ];
 
   // Check if return is allowed
@@ -198,28 +194,19 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
-        {/* Return Type Selection */}
+        {/* Return Type - Fixed to Return for Refund */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-3">
             Return Type
           </label>
-          <div className="space-y-3">
-            {typeOptions.map(option => (
-              <label key={option.value} className="flex items-start space-x-3 cursor-pointer">
-                <input
-                  type="radio"
-                  name="type"
-                  value={option.value}
-                  checked={formData.type === option.value}
-                  onChange={(e) => handleInputChange('type', e.target.value)}
-                  className="mt-1 h-4 w-4 text-stellamaris-600 focus:ring-stellamaris-500"
-                />
-                <div>
-                  <div className="font-medium text-gray-900">{option.label}</div>
-                  <div className="text-sm text-gray-600">{option.description}</div>
-                </div>
-              </label>
-            ))}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-4 h-4 bg-blue-600 rounded-full"></div>
+              <div>
+                <div className="font-medium text-gray-900">Return for Refund</div>
+                <div className="text-sm text-gray-600">Return items for a full refund to your original payment method</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -323,38 +310,13 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
           />
         </div>
 
-        {/* Requested Amount (for partial refunds) */}
-        {formData.type === 'refund' && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Requested Refund Amount
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max={order.totalAmount}
-                value={formData.requestedAmount || ''}
-                onChange={(e) => handleInputChange('requestedAmount', parseFloat(e.target.value))}
-                placeholder="0.00"
-                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-              />
-            </div>
-            <p className="text-sm text-gray-600 mt-1">
-              Maximum refund: ${order.totalAmount.toFixed(2)}
-            </p>
-          </div>
-        )}
-
-        {/* Evidence Upload */}
+        {/* Evidence Upload - Required */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Evidence (Photos/Videos)
+            Evidence (Photos/Videos) <span className="text-red-500">*Required</span>
           </label>
           <p className="text-sm text-gray-600 mb-3">
-            Upload photos or videos showing the issue (optional but helpful for faster processing)
+            Please upload photos or videos showing the issue to help us process your return quickly
           </p>
           
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
@@ -373,31 +335,46 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
               />
             </label>
             <p className="text-sm text-gray-500 mt-2">
-              PNG, JPG, MP4 up to 10MB each
+              PNG, JPG, MP4 up to 10MB each (At least 1 image required)
             </p>
           </div>
 
           {formData.evidenceUrls.length > 0 && (
             <div className="mt-3">
-              <p className="text-sm font-medium text-gray-700 mb-2">Uploaded Files:</p>
-              <div className="space-y-2">
-                {formData.evidenceUrls.map((url, index) => (
-                  <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                    <span className="text-sm text-gray-600">Evidence file {index + 1}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData(prev => ({
-                          ...prev,
-                          evidenceUrls: prev.evidenceUrls.filter((_, i) => i !== index)
-                        }));
-                      }}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
+              <p className="text-sm font-medium text-gray-700 mb-2">Uploaded Evidence:</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {formData.evidenceUrls.map((url, index) => {
+                  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+                  return (
+                    <div key={index} className="relative group">
+                      {isImage ? (
+                        <img
+                          src={url}
+                          alt={`Evidence ${index + 1}`}
+                          className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                          onClick={() => window.open(url, '_blank')}
+                        />
+                      ) : (
+                        <div className="w-full h-24 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
+                          <FileText className="h-6 w-6 text-gray-400" />
+                          <span className="text-xs text-gray-600 ml-1">File {index + 1}</span>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({
+                            ...prev,
+                            evidenceUrls: prev.evidenceUrls.filter((_, i) => i !== index)
+                          }));
+                        }}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

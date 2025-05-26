@@ -403,6 +403,20 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_type", ["type"]),
 
+  // Return messages for communication between customer and admin
+  returnMessages: defineTable({
+    returnRequestId: v.id("returnRequests"),
+    senderId: v.id("users"),
+    senderType: v.union(v.literal("customer"), v.literal("admin")),
+    message: v.string(),
+    messageType: v.union(v.literal("text"), v.literal("status_update"), v.literal("admin_response")),
+    isRead: v.boolean(),
+    attachments: v.optional(v.array(v.string())), // URLs for image attachments
+  })
+    .index("by_return_request", ["returnRequestId"])
+    .index("by_sender", ["senderId"])
+    .index("by_return_and_read", ["returnRequestId", "isRead"]),
+
   // Site settings
   siteSettings: defineTable({
     key: v.string(),

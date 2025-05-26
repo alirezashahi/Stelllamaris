@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { User, Package, Heart, MapPin, Shield, Leaf, Award, Gift, Plus, Edit2, Trash2, CreditCard, ShoppingCart, Check, RotateCcw, AlertTriangle } from 'lucide-react'
+import { User, Package, Heart, MapPin, Shield, Leaf, Award, Gift, Plus, Edit2, Trash2, CreditCard, ShoppingCart, Check, RotateCcw, AlertTriangle, MessageSquare, X } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useCart } from '../../contexts/CartContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import ReturnRequestForm from '../returns/ReturnRequestForm'
+import ReturnMessaging from '../returns/ReturnMessaging'
 
 interface Address {
   _id: Id<"userAddresses">
@@ -49,6 +50,10 @@ const UserAccountPage = () => {
   // Return request state
   const [showReturnRequestForm, setShowReturnRequestForm] = useState(false)
   const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<any>(null)
+  
+  // Messaging state
+  const [showMessaging, setShowMessaging] = useState(false)
+  const [selectedReturnForMessaging, setSelectedReturnForMessaging] = useState<any>(null)
 
   // Convex queries and mutations
   const addresses = useQuery(api.addresses.getUserAddresses, 
@@ -87,6 +92,13 @@ const UserAccountPage = () => {
   const addPaymentMethod = useMutation(api.paymentMethods.addPaymentMethod)
   const updatePaymentMethod = useMutation(api.paymentMethods.updatePaymentMethod)
   const deletePaymentMethod = useMutation(api.paymentMethods.deletePaymentMethod)
+  
+  // Return mutations
+  const deleteReturnRequest = useMutation(api.returns.deleteReturnRequest)
+  const unreadMessageCount = useQuery(
+    api.returns.getUnreadReturnMessageCount,
+    convexUser ? { userId: convexUser._id } : "skip"
+  )
 
   // Address form state
   const [addressForm, setAddressForm] = useState({
@@ -115,7 +127,7 @@ const UserAccountPage = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search)
     const tabParam = urlParams.get('tab')
-    if (tabParam && ['profile', 'addresses', 'payment-methods', 'orders', 'wishlist', 'impact', 'security'].includes(tabParam)) {
+    if (tabParam && ['profile', 'addresses', 'payment-methods', 'orders', 'returns', 'wishlist', 'impact', 'security'].includes(tabParam)) {
       setActiveTab(tabParam)
     }
   }, [location.search])
@@ -276,6 +288,32 @@ const UserAccountPage = () => {
     setSelectedOrderForReturn(null)
   }
 
+  const handleOpenMessaging = (returnRequest: any) => {
+    setSelectedReturnForMessaging(returnRequest)
+    setShowMessaging(true)
+  }
+
+  const handleCloseMessaging = () => {
+    setShowMessaging(false)
+    setSelectedReturnForMessaging(null)
+  }
+
+  const handleDeleteReturnRequest = async (returnRequestId: Id<"returnRequests">) => {
+    if (!convexUser) return
+    
+    if (confirm('Are you sure you want to delete this return request? This action cannot be undone.')) {
+      try {
+        await deleteReturnRequest({
+          returnRequestId,
+          userId: convexUser._id
+        })
+      } catch (error) {
+        console.error('Failed to delete return request:', error)
+        alert('Failed to delete return request. Please try again.')
+      }
+    }
+  }
+
   const canRequestReturn = (order: any) => {
     // Only delivered orders can be returned
     if (order.status !== 'delivered') return false
@@ -290,10 +328,8 @@ const UserAccountPage = () => {
   const hasExistingReturnRequest = (orderId: Id<"orders">) => {
     if (!userReturnRequests) return false
     
-    return userReturnRequests.some(request => 
-      request.orderId === orderId && 
-      ['pending', 'approved', 'processing'].includes(request.status)
-    )
+    // Return true if ANY return request exists for this order (user can only submit 1 return request per purchase)
+    return userReturnRequests.some(request => request.orderId === orderId)
   }
 
   const TabButton = ({ id, label, icon: Icon, isActive }: {
@@ -424,6 +460,12 @@ const UserAccountPage = () => {
                   label="Order History"
                   icon={Package}
                   isActive={activeTab === 'orders'}
+                />
+                <TabButton
+                  id="returns"
+                  label="Returns"
+                  icon={RotateCcw}
+                  isActive={activeTab === 'returns'}
                 />
                 <TabButton
                   id="wishlist"
@@ -971,7 +1013,7 @@ const UserAccountPage = () => {
                           {order.status === 'delivered' && convexUser && (
                             <div className="mt-4 pt-4 border-t border-gray-200">
                               <div className="flex items-center justify-between mb-3">
-                                <h4 className="font-medium text-gray-900">Return or Dispute</h4>
+                                <h4 className="font-medium text-gray-900">Return Request</h4>
                                 {canRequestReturn(order) && (
                                   <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
                                     Return window open ({Math.max(0, 30 - Math.floor((Date.now() - (order.deliveredAt || order._creationTime)) / (1000 * 60 * 60 * 24)))} days left)
@@ -994,23 +1036,10 @@ const UserAccountPage = () => {
                                       <RotateCcw className="h-4 w-4" />
                                       <span>Request Return</span>
                                     </button>
-                                    <button
-                                      onClick={() => handleOpenReturnRequest({ ...order, disputeMode: true })}
-                                      className="flex items-center space-x-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 text-sm transition-colors"
-                                    >
-                                      <AlertTriangle className="h-4 w-4" />
-                                      <span>Open Dispute</span>
-                                    </button>
                                   </div>
                                 ) : (
                                   <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-                                    Return window expired (30 days from delivery). 
-                                    <button
-                                      onClick={() => handleOpenReturnRequest({ ...order, disputeMode: true })}
-                                      className="text-amber-600 hover:text-amber-700 ml-1 underline"
-                                    >
-                                      Open a dispute instead
-                                    </button>
+                                    Return window expired (30 days from delivery)
                                   </div>
                                 )}
                               </div>
@@ -1023,6 +1052,195 @@ const UserAccountPage = () => {
                     <div className="text-center py-8">
                       <Package className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                       <p className="text-gray-600 mb-4">No orders yet. Start shopping to see your order history!</p>
+                      <Link to="/bags" className="bg-stellamaris-600 text-white px-6 py-3 rounded-md hover:bg-stellamaris-700 transition-colors inline-block">
+                        Start Shopping
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'returns' && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-6">Returns & Return Requests</h2>
+                  
+                  {/* Show delivered orders eligible for return */}
+                  {orders && orders.length > 0 ? (
+                    <div className="space-y-6">
+                      {/* Eligible for Return Section */}
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Eligible for Return</h3>
+                        {orders.filter(order => order.status === 'delivered' && canRequestReturn(order) && !hasExistingReturnRequest(order._id)).length > 0 ? (
+                          <div className="space-y-4">
+                            {orders
+                              .filter(order => order.status === 'delivered' && canRequestReturn(order) && !hasExistingReturnRequest(order._id))
+                              .map(order => (
+                                <div key={order._id} className="border border-gray-200 rounded-lg p-6 bg-green-50">
+                                  <div className="flex items-start justify-between mb-4">
+                                    <div>
+                                      <h4 className="text-lg font-semibold text-gray-900">Order #{order.orderNumber}</h4>
+                                      <p className="text-sm text-gray-600">
+                                        Delivered on {new Date(order.deliveredAt || order._creationTime).toLocaleDateString()}
+                                      </p>
+                                      <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded mt-2 inline-block">
+                                        Return window open ({Math.max(0, 30 - Math.floor((Date.now() - (order.deliveredAt || order._creationTime)) / (1000 * 60 * 60 * 24)))} days left)
+                                      </span>
+                                    </div>
+                                    <div className="text-right">
+                                      <span className="text-lg font-semibold text-gray-900">${order.totalAmount.toFixed(2)}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="mb-4">
+                                    <h5 className="font-medium text-gray-900 mb-2">Items:</h5>
+                                    <div className="space-y-1">
+                                      {order.items.map((item, index) => (
+                                        <div key={index} className="flex justify-between text-sm">
+                                          <div>
+                                            <span className="text-gray-900">{item.productName}</span>
+                                            {item.variantName && (
+                                              <span className="text-gray-600"> - {item.variantName}</span>
+                                            )}
+                                            <span className="text-gray-600"> (Qty: {item.quantity})</span>
+                                          </div>
+                                          <span className="text-gray-900">${item.totalPrice.toFixed(2)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    onClick={() => handleOpenReturnRequest(order)}
+                                    className="flex items-center space-x-2 bg-stellamaris-600 text-white px-4 py-2 rounded-lg hover:bg-stellamaris-700 text-sm transition-colors"
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                    <span>Request Return</span>
+                                  </button>
+                                </div>
+                              ))
+                            }
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 bg-gray-50 rounded-lg">
+                            <Package className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                            <p className="text-gray-600">No orders currently eligible for return</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Return Requests Section */}
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Return Requests</h3>
+                        {userReturnRequests && userReturnRequests.length > 0 ? (
+                          <div className="space-y-4">
+                            {userReturnRequests.map(request => (
+                              <div key={request._id} className="border border-gray-200 rounded-lg p-6">
+                                <div className="flex items-start justify-between mb-4">
+                                  <div>
+                                    <h4 className="text-lg font-semibold text-gray-900">
+                                      Return Request for Order #{request.orderNumber}
+                                    </h4>
+                                    <p className="text-sm text-gray-600">
+                                      Submitted on {new Date(request.submittedAt).toLocaleDateString()}
+                                    </p>
+                                    {request.rmaNumber && (
+                                      <p className="text-sm text-gray-600 font-mono">
+                                        RMA: {request.rmaNumber}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="text-right">
+                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                      request.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                      request.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                      request.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                                      request.status === 'completed' ? 'bg-purple-100 text-purple-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="mb-4">
+                                  <p className="text-sm text-gray-600">
+                                    <span className="font-medium">Reason:</span> {request.reason.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                                  </p>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    <span className="font-medium">Description:</span> {request.description}
+                                  </p>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <h5 className="font-medium text-gray-900">Return Items:</h5>
+                                  {request.returnItems.map((item, index) => (
+                                    <div key={index} className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                                      Item {item.orderItemIndex + 1}: Quantity {item.quantity}
+                                      {item.reason && (
+                                        <span className="block text-xs">Reason: {item.reason}</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {request.status === 'approved' && (
+                                  <div className="mt-4 p-3 bg-green-50 rounded-lg">
+                                    <p className="text-sm text-green-800">
+                                      ✓ Your return has been approved. Please follow the return instructions sent to your email.
+                                    </p>
+                                  </div>
+                                )}
+
+                                {request.status === 'rejected' && (
+                                  <div className="mt-4 p-3 bg-red-50 rounded-lg">
+                                    <p className="text-sm text-red-800">
+                                      ✗ Your return request was not approved. Please contact customer service for more information.
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Action Buttons */}
+                                <div className="mt-4 flex items-center justify-between pt-4 border-t border-gray-200">
+                                  <div className="flex items-center space-x-3">
+                                    <button
+                                      onClick={() => handleOpenMessaging(request)}
+                                      className="inline-flex items-center space-x-2 text-stellamaris-600 hover:text-stellamaris-700 text-sm font-medium transition-colors"
+                                    >
+                                      <MessageSquare className="h-4 w-4" />
+                                      <span>Messages</span>
+                                      {unreadMessageCount && unreadMessageCount > 0 && (
+                                        <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 ml-1">
+                                          {unreadMessageCount}
+                                        </span>
+                                      )}
+                                    </button>
+                                  </div>
+                                  
+                                  {request.status === 'pending' && (
+                                    <button
+                                      onClick={() => handleDeleteReturnRequest(request._id)}
+                                      className="inline-flex items-center space-x-2 text-red-600 hover:text-red-700 text-sm font-medium transition-colors"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                      <span>Delete Request</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 bg-gray-50 rounded-lg">
+                            <RotateCcw className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                            <p className="text-gray-600">No return requests submitted yet</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Package className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                      <p className="text-gray-600 mb-4">No orders yet. You'll be able to manage returns here once you have delivered orders.</p>
                       <Link to="/bags" className="bg-stellamaris-600 text-white px-6 py-3 rounded-md hover:bg-stellamaris-700 transition-colors inline-block">
                         Start Shopping
                       </Link>
@@ -1121,6 +1339,20 @@ const UserAccountPage = () => {
               userId={convexUser._id}
               onSuccess={handleReturnRequestSuccess}
               onCancel={handleReturnRequestCancel}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Return Messaging Modal */}
+      {showMessaging && selectedReturnForMessaging && convexUser && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-2xl max-h-[90vh] overflow-hidden w-full">
+            <ReturnMessaging
+              returnRequestId={selectedReturnForMessaging._id}
+              userId={convexUser._id}
+              userName={convexUser?.name || user?.name || 'User'}
+              onClose={handleCloseMessaging}
             />
           </div>
         </div>

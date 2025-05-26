@@ -135,6 +135,8 @@ export const getUserOrders = query({
       country: v.string(),
     }),
     trackingNumber: v.optional(v.string()),
+    shippedAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
     items: v.array(v.object({
       productName: v.string(),
       variantName: v.optional(v.string()),
@@ -175,6 +177,8 @@ export const getUserOrders = query({
           selectedCharityType: order.selectedCharityType,
           shippingAddress: order.shippingAddress,
           trackingNumber: order.trackingNumber,
+          shippedAt: order.shippedAt,
+          deliveredAt: order.deliveredAt,
           items: items.map(item => ({
             productName: item.productName,
             variantName: item.variantName,

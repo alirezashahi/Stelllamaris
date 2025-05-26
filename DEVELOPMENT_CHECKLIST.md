@@ -26,11 +26,11 @@
 ### Core Authentication
 - [x] ~~Set up Convex authentication~~ (Removed - switching to Clerk)
 - [x] Set up Clerk authentication 
-- [ ] User registration functionality
-- [ ] User login functionality  
-- [ ] Password reset functionality
-- [ ] Session management
-- [ ] Admin role-based access
+- [x] User registration functionality
+- [x] User login functionality  
+- [x] Password reset functionality
+- [x] Session management
+- [x] Admin role-based access
 
 ## 🛍️ **Phase 2: Customer-Facing Core Features**
 
@@ -47,7 +47,7 @@
 - [x] Hero section with sustainability messaging
 - [x] Featured products section
 - [x] New arrivals section
-- [ ] Shop by category section
+- [x] Shop by category section
 - [x] Newsletter signup with charity impact info
 - [x] Responsive design implementation
 
@@ -101,9 +101,9 @@
 ## 🔧 **Phase 3: Admin Panel**
 
 ### Admin Authentication
-- [ ] Admin login system
-- [ ] Role-based access control
-- [ ] Admin dashboard overview
+- [x] Admin login system
+- [x] Role-based access control
+- [x] Admin dashboard overview
 
 ### Product Management
 - [x] Product listing for admin
@@ -170,7 +170,7 @@
 
 ### Additional Features
 - [ ] Product search with filters
-- [ ] Recently viewed products
+- [x] Recently viewed products
 - [ ] Abandoned cart recovery
 - [ ] Product recommendations
 - [ ] Inventory alerts
