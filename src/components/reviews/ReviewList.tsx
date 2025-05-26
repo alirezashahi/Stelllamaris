@@ -34,7 +34,7 @@ interface ReviewListProps {
 }
 
 const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName }) => {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, isAdmin } = useAuth()
   const [editingReview, setEditingReview] = useState<string | null>(null)
   const [replyingToReview, setReplyingToReview] = useState<string | null>(null)
   const [adminReplyText, setAdminReplyText] = useState('')
@@ -42,6 +42,8 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   const deleteReview = useMutation(api.reviews.deleteReview)
+  const addAdminResponse = useMutation(api.reviews.addAdminResponse)
+  const removeAdminResponse = useMutation(api.reviews.removeAdminResponse)
 
   // Get permission checks for all reviews at once (proper hook usage)
   const reviewPermissions = useQuery(
@@ -83,21 +85,36 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
   }
 
   const handleAdminReply = async (reviewId: string) => {
-    // Placeholder - implement when admin functions are added back
-    console.log('Admin reply functionality needs to be implemented')
+    if (!user || !isAdmin || !adminReplyText.trim()) return
+
+    try {
+      await addAdminResponse({
+        reviewId: reviewId as Id<"reviews">,
+        adminClerkUserId: user.id,
+        response: adminReplyText.trim(),
+      })
+      setReplyingToReview(null)
+      setAdminReplyText('')
+      setMenuOpen(null)
+    } catch (error) {
+      console.error('Failed to add admin response:', error)
+    }
   }
 
-  const handleRemoveReview = async (reviewId: string) => {
-    // Placeholder - implement when admin functions are added back  
-    console.log('Remove review functionality needs to be implemented')
-  }
+  const handleRemoveAdminResponse = async (reviewId: string) => {
+    if (!user || !isAdmin) return
 
-  const isAdmin = () => {
-    // Check if user has admin role - you can customize this logic
-    return user && user.email && (
-      user.email.includes('admin') || 
-      user.email.includes('stellamaris.com')
-    )
+    if (window.confirm('Are you sure you want to remove this admin response?')) {
+      try {
+        await removeAdminResponse({
+          reviewId: reviewId as Id<"reviews">,
+          adminClerkUserId: user.id,
+        })
+        setMenuOpen(null)
+      } catch (error) {
+        console.error('Failed to remove admin response:', error)
+      }
+    }
   }
 
   if (reviews.length === 0) {
@@ -152,7 +169,7 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
                     </div>
                   </div>
                   
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-4">
                     {/* Rating */}
                     <div className="flex items-center">
                       {[...Array(5)].map((_, i) => (
@@ -168,8 +185,8 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
                       ))}
                     </div>
 
-                    {/* Action Menu - Only show if user can edit this review */}
-                    {canEditReview(review._id) && (
+                    {/* Action Menu - Only show if user can edit this review OR is admin */}
+                    {(canEditReview(review._id) || isAdmin) && (
                       <div className="relative">
                         <button
                           onClick={() => setMenuOpen(menuOpen === review._id ? null : review._id)}
@@ -180,57 +197,56 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
 
                         {menuOpen === review._id && (
                           <div className="absolute right-0 top-8 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                            <button
-                              onClick={() => {
-                                setEditingReview(review._id)
-                                setMenuOpen(null)
-                              }}
-                              className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              <Edit size={14} />
-                              <span>Edit Review</span>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteReview(review._id)}
-                              className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 size={14} />
-                              <span>Delete Review</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                            {/* User options */}
+                            {canEditReview(review._id) && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setEditingReview(review._id)
+                                    setMenuOpen(null)
+                                  }}
+                                  className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  <Edit size={14} />
+                                  <span>Edit Review</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteReview(review._id)}
+                                  className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 size={14} />
+                                  <span>Delete Review</span>
+                                </button>
+                              </>
+                            )}
 
-                    {/* Admin Menu - Only show for admins */}
-                    {isAdmin() && !canEditReview(review._id) && (
-                      <div className="relative">
-                        <button
-                          onClick={() => setMenuOpen(menuOpen === review._id ? null : review._id)}
-                          className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-
-                        {menuOpen === review._id && (
-                          <div className="absolute right-0 top-8 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                            <button
-                              onClick={() => handleRemoveReview(review._id)}
-                              className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                            >
-                              <Flag size={14} />
-                              <span>Remove Review</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setReplyingToReview(review._id)
-                                setMenuOpen(null)
-                              }}
-                              className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
-                            >
-                              <Reply size={14} />
-                              <span>Reply as Admin</span>
-                            </button>
+                            {/* Admin options */}
+                            {isAdmin && (
+                              <>
+                                {canEditReview(review._id) && <div className="border-t border-gray-200 my-1" />}
+                                
+                                {!review.adminResponse ? (
+                                  <button
+                                    onClick={() => {
+                                      setReplyingToReview(review._id)
+                                      setMenuOpen(null)
+                                    }}
+                                    className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                                  >
+                                    <Reply size={14} />
+                                    <span>Reply as Admin</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleRemoveAdminResponse(review._id)}
+                                    className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                  >
+                                    <Trash2 size={14} />
+                                    <span>Remove Admin Response</span>
+                                  </button>
+                                )}
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -256,7 +272,8 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
                           Customer Photos ({review.images.length})
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         {review.images.map((image, index) => (
                           <div
                             key={image._id}
@@ -285,9 +302,11 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
             )}
 
             {/* Admin Reply Form */}
-            {replyingToReview === review._id && (
+            {replyingToReview === review._id && isAdmin && (
               <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h6 className="font-semibold text-blue-800 mb-2">Reply as Admin</h6>
+                <h6 className="font-semibold text-blue-800 mb-2">
+                  Reply as Admin ({user?.name || 'Admin'})
+                </h6>
                 <textarea
                   value={adminReplyText}
                   onChange={(e) => setAdminReplyText(e.target.value)}
@@ -329,32 +348,24 @@ const ReviewList: React.FC<ReviewListProps> = ({ reviews, productId, productName
 
       {/* Image Lightbox */}
       {lightboxImage && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
           onClick={() => setLightboxImage(null)}
         >
-          <div className="relative max-w-4xl max-h-full">
+          <div className="relative max-w-4xl max-h-[90vh]">
             <img
               src={lightboxImage}
-              alt="Review image enlarged"
+              alt="Review image"
               className="max-w-full max-h-full object-contain"
             />
             <button
               onClick={() => setLightboxImage(null)}
-              className="absolute top-4 right-4 bg-white bg-opacity-80 hover:bg-opacity-100 rounded-full p-2 transition-opacity"
+              className="absolute top-4 right-4 bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-2 rounded-full transition-colors"
             >
-              <X size={20} className="text-gray-900" />
+              <X size={20} />
             </button>
           </div>
         </div>
-      )}
-
-      {/* Click outside to close menu */}
-      {menuOpen && (
-        <div
-          className="fixed inset-0 z-0"
-          onClick={() => setMenuOpen(null)}
-        />
       )}
     </div>
   )

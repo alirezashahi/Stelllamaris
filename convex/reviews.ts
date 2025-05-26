@@ -488,4 +488,101 @@ async function updateProductRatingStats(
     averageRating: Math.round(averageRating * 10) / 10,
     totalReviews,
   });
-} 
+}
+
+/**
+ * Add admin response to a review (admin only)
+ */
+export const addAdminResponse = mutation({
+  args: {
+    reviewId: v.id("reviews"),
+    adminClerkUserId: v.string(),
+    response: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Get admin user from Clerk ID
+    const adminUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", args.adminClerkUserId))
+      .unique();
+
+    if (!adminUser) {
+      throw new Error("Admin user not found. Please sign in again.");
+    }
+
+    // Check if user is admin
+    if (adminUser.role !== 'admin') {
+      throw new Error("You don't have permission to respond as admin");
+    }
+
+    const review = await ctx.db.get(args.reviewId);
+    if (!review) {
+      throw new Error("Review not found");
+    }
+
+    // Update the review with admin response
+    await ctx.db.patch(args.reviewId, {
+      adminResponse: args.response.trim(),
+    });
+
+    return null;
+  },
+});
+
+/**
+ * Remove admin response from a review (admin only)
+ */
+export const removeAdminResponse = mutation({
+  args: {
+    reviewId: v.id("reviews"),
+    adminClerkUserId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Get admin user from Clerk ID
+    const adminUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", args.adminClerkUserId))
+      .unique();
+
+    if (!adminUser) {
+      throw new Error("Admin user not found. Please sign in again.");
+    }
+
+    // Check if user is admin
+    if (adminUser.role !== 'admin') {
+      throw new Error("You don't have permission to modify admin responses");
+    }
+
+    const review = await ctx.db.get(args.reviewId);
+    if (!review) {
+      throw new Error("Review not found");
+    }
+
+    // Remove the admin response
+    await ctx.db.patch(args.reviewId, {
+      adminResponse: undefined,
+    });
+
+    return null;
+  },
+});
+
+/**
+ * Check if user is admin
+ */
+export const isUserAdmin = query({
+  args: {
+    clerkUserId: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", args.clerkUserId))
+      .unique();
+
+    return user?.role === 'admin';
+  },
+}); 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight, Image, Palette, Check } from 'lucide-react';
+import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight, Image, Palette, Check, Share2, Copy, MessageCircle } from 'lucide-react';
 import { Id } from '../../../convex/_generated/dataModel';
 import ReviewSection from '../reviews/ReviewSection';
 import { useCart } from '../../contexts/CartContext';
@@ -17,6 +17,7 @@ const ProductDetailPage: React.FC = () => {
   const [addedToCart, setAddedToCart] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [linkCopied, setLinkCopied] = useState(false);
   const prevSelectedColorVariantRef = useRef<Id<"productVariants"> | undefined>();
   
   const { addToCart } = useCart();
@@ -256,6 +257,44 @@ const ProductDetailPage: React.FC = () => {
   // Get color variant options with enhanced display
   const colorVariants = variantsByType['color'] || [];
   const sizeVariants = variantsByType['size'] || [];
+
+  // Social sharing functions
+  const currentUrl = window.location.href;
+  const shareText = `Check out ${product.name} - ${product.shortDescription || product.description.substring(0, 100)}...`;
+  
+  const handleWhatsAppShare = () => {
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${currentUrl}`)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const handleTelegramShare = () => {
+    const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(currentUrl)}&text=${encodeURIComponent(shareText)}`;
+    window.open(telegramUrl, '_blank');
+  };
+
+  const handleXShare = () => {
+    const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(currentUrl)}`;
+    window.open(xUrl, '_blank');
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(currentUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea');
+      textArea.value = currentUrl;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -581,6 +620,63 @@ const ProductDetailPage: React.FC = () => {
                 <p className="text-sm text-gray-600">{product.careInstructions}</p>
               </div>
             )}
+
+            {/* Share this product */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Share this product</h3>
+              <div className="flex items-center space-x-3">
+                {/* WhatsApp */}
+                <button
+                  onClick={handleWhatsAppShare}
+                  className="flex items-center justify-center w-10 h-10 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors"
+                  aria-label="Share on WhatsApp"
+                >
+                  <MessageCircle size={18} />
+                </button>
+
+                {/* Telegram */}
+                <button
+                  onClick={handleTelegramShare}
+                  className="flex items-center justify-center w-10 h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
+                  aria-label="Share on Telegram"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.568 8.16l-1.58 7.44c-.12.54-.44.67-.89.42l-2.46-1.81-1.19 1.14c-.13.13-.24.24-.49.24l.17-2.43 4.47-4.03c.19-.17-.04-.27-.3-.1l-5.52 3.47-2.38-.74c-.52-.16-.53-.52.11-.77l9.3-3.58c.43-.16.81.1.67.76z"/>
+                  </svg>
+                </button>
+
+                {/* X (Twitter) */}
+                <button
+                  onClick={handleXShare}
+                  className="flex items-center justify-center w-10 h-10 bg-black hover:bg-gray-800 text-white rounded-full transition-colors"
+                  aria-label="Share on X"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                </button>
+
+                {/* Copy Link */}
+                <button
+                  onClick={handleCopyLink}
+                  className={`flex items-center justify-center w-10 h-10 transition-colors rounded-full ${
+                    linkCopied 
+                      ? 'bg-green-500 text-white' 
+                      : 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+                  }`}
+                  aria-label="Copy link"
+                >
+                  {linkCopied ? (
+                    <Check size={16} />
+                  ) : (
+                    <Copy size={16} />
+                  )}
+                </button>
+              </div>
+              {linkCopied && (
+                <p className="text-sm text-green-600 mt-2 font-medium">Link copied to clipboard!</p>
+              )}
+            </div>
           </div>
         </div>
 

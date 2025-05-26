@@ -8,12 +8,14 @@ interface User {
   id: string;
   name: string;
   email: string;
+  role?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   signIn: () => void;
   signOut: () => void;
 }
@@ -56,6 +58,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             clerkUserId: user.id,
             email: user.primaryEmailAddress?.emailAddress || '',
             name: user.fullName || user.firstName || '',
+            role: user.publicMetadata?.role as string || 'customer',
           });
           
           // Then, transfer any guest cart items to the user
@@ -96,14 +99,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     processedUserIdRef.current = null;
   }, [signOut]);
 
+  // Check if user is admin from Clerk metadata
+  const isAdmin = user?.publicMetadata?.role === 'admin';
+
   const value: AuthContextType = {
     user: user ? {
       id: user.id,
       name: user.fullName || user.firstName || '',
       email: user.primaryEmailAddress?.emailAddress || '',
+      role: user.publicMetadata?.role as string || 'customer',
     } : null,
     isLoading: !isLoaded,
     isAuthenticated: !!user,
+    isAdmin,
     signIn: handleSignIn,
     signOut: handleSignOut,
   };

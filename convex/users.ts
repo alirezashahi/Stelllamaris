@@ -36,6 +36,7 @@ export const createOrGetUser = mutation({
     clerkUserId: v.string(),
     email: v.string(),
     name: v.string(),
+    role: v.optional(v.string()),
   },
   returns: v.id("users"),
   handler: async (ctx, args) => {
@@ -46,10 +47,11 @@ export const createOrGetUser = mutation({
       .unique();
 
     if (existingUser) {
-      // Update user info in case it changed
+      // Update user info in case it changed, including role
       await ctx.db.patch(existingUser._id, {
         email: args.email,
         name: args.name,
+        role: args.role === 'admin' ? 'admin' : 'customer',
       });
       return existingUser._id;
     }
@@ -60,7 +62,7 @@ export const createOrGetUser = mutation({
         clerkUserId: args.clerkUserId,
         email: args.email,
         name: args.name,
-        role: "customer",
+        role: args.role === 'admin' ? 'admin' : 'customer',
         isActive: true,
       });
       return newUserId;
@@ -76,6 +78,7 @@ export const createOrGetUser = mutation({
         await ctx.db.patch(retryUser._id, {
           email: args.email,
           name: args.name,
+          role: args.role === 'admin' ? 'admin' : 'customer',
         });
         return retryUser._id;
       }

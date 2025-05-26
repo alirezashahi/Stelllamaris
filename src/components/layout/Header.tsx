@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, ShoppingBag, User, Menu, X, Heart, Settings } from 'lucide-react'
+import { Search, ShoppingBag, User, Menu, X, Heart, Settings, Shield } from 'lucide-react'
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react'
 import { useCart } from '../../contexts/CartContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -11,6 +11,7 @@ const Header = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
   const { getTotalItems } = useCart()
+  const { isAdmin } = useAuth()
 
   const handleToggleMenu = () => {
     setIsMenuOpen(!isMenuOpen)
@@ -81,6 +82,16 @@ const Header = () => {
             >
               Our Impact
             </Link>
+            {/* Admin Link - Only show for admin users */}
+            {isAdmin && (
+              <Link 
+                to="/admin" 
+                className="text-orange-600 hover:text-orange-700 font-medium transition-colors flex items-center space-x-1"
+              >
+                <Shield size={16} />
+                <span>Admin</span>
+              </Link>
+            )}
           </nav>
 
           {/* Actions */}
@@ -204,6 +215,18 @@ const Header = () => {
               >
                 Our Impact
               </Link>
+              
+              {/* Admin Link - Mobile */}
+              {isAdmin && (
+                <Link 
+                  to="/admin" 
+                  className="text-orange-600 hover:text-orange-700 font-medium transition-colors py-2 flex items-center space-x-2"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <Shield size={16} />
+                  <span>Admin Dashboard</span>
+                </Link>
+              )}
               
               {/* Mobile Auth Section */}
               <div className="border-t border-gray-200 pt-4 mt-4">
