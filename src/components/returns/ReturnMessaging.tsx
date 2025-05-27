@@ -20,6 +20,7 @@ const ReturnMessaging: React.FC<ReturnMessagingProps> = ({
   const [newMessage, setNewMessage] = useState('')
   const [attachments, setAttachments] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Queries and mutations
@@ -30,6 +31,10 @@ const ReturnMessaging: React.FC<ReturnMessagingProps> = ({
 
   const sendMessage = useMutation(api.returns.sendReturnMessage)
   const markAsRead = useMutation(api.returns.markReturnMessagesAsRead)
+  
+  // File upload mutations
+  const generateUploadUrl = useMutation(api.fileUpload.generateUploadUrl)
+  const saveReturnMessageAttachment = useMutation(api.fileUpload.saveReturnMessageAttachment)
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -90,14 +95,29 @@ const ReturnMessaging: React.FC<ReturnMessagingProps> = ({
           continue
         }
 
-        // Create a data URL for the image
-        const reader = new FileReader()
-        const dataUrl = await new Promise<string>((resolve) => {
-          reader.onload = (e) => resolve(e.target?.result as string)
-          reader.readAsDataURL(file)
+        // Generate upload URL
+        const uploadUrl = await generateUploadUrl()
+        
+        // Upload file to Convex storage
+        const result = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
         })
-
-        newAttachments.push(dataUrl)
+        
+        if (!result.ok) {
+          throw new Error(`Failed to upload ${file.name}`)
+        }
+        
+        const { storageId } = await result.json()
+        
+        // Save and get the file URL
+        const fileUrl = await saveReturnMessageAttachment({
+          storageId,
+          altText: `Message attachment`,
+        })
+        
+        newAttachments.push(fileUrl)
       }
 
       setAttachments(prev => [...prev, ...newAttachments])
@@ -106,6 +126,8 @@ const ReturnMessaging: React.FC<ReturnMessagingProps> = ({
       alert('Failed to upload file. Please try again.')
     } finally {
       setIsUploading(false)
+      // Reset file input
+      event.target.value = ''
     }
   }
 
@@ -203,8 +225,8 @@ const ReturnMessaging: React.FC<ReturnMessagingProps> = ({
                           key={index}
                           src={attachment}
                           alt={`Attachment ${index + 1}`}
-                          className="w-full h-20 object-cover rounded border cursor-pointer hover:opacity-80"
-                          onClick={() => window.open(attachment, '_blank')}
+                          className="w-full h-20 object-cover rounded border cursor-pointer hover:opacity-80 hover:border-stellamaris-400 transition-colors"
+                          onClick={() => setLightboxImage(attachment)}
                         />
                       ))}
                     </div>
@@ -301,6 +323,28 @@ const ReturnMessaging: React.FC<ReturnMessagingProps> = ({
           </div>
         )}
       </div>
+
+      {/* Image Lightbox */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60]"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <img
+              src={lightboxImage}
+              alt="Message attachment"
+              className="max-w-full max-h-full object-contain"
+            />
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-4 right-4 bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-2 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

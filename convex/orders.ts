@@ -25,6 +25,16 @@ export const createOrder = mutation({
       quantity: v.number(),
       unitPrice: v.number(),
       totalPrice: v.number(),
+      shippingOption: v.optional(v.object({
+        id: v.string(),
+        name: v.string(),
+        description: v.string(),
+        price: v.number(), // in cents
+        estimatedDays: v.object({
+          min: v.number(),
+          max: v.number(),
+        }),
+      })),
     })),
     subtotal: v.number(),
     taxAmount: v.number(),
@@ -90,6 +100,7 @@ export const createOrder = mutation({
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
+        shippingOption: item.shippingOption,
       });
     }
 
@@ -143,6 +154,16 @@ export const getUserOrders = query({
       quantity: v.number(),
       unitPrice: v.number(),
       totalPrice: v.number(),
+      shippingOption: v.optional(v.object({
+        id: v.string(),
+        name: v.string(),
+        description: v.string(),
+        price: v.number(), // in cents
+        estimatedDays: v.object({
+          min: v.number(),
+          max: v.number(),
+        }),
+      })),
     })),
   })),
   handler: async (ctx, args) => {
@@ -185,6 +206,7 @@ export const getUserOrders = query({
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,
+            shippingOption: item.shippingOption,
           })),
         };
       })
@@ -247,6 +269,16 @@ export const getOrderByNumber = query({
       quantity: v.number(),
       unitPrice: v.number(),
       totalPrice: v.number(),
+      shippingOption: v.optional(v.object({
+        id: v.string(),
+        name: v.string(),
+        description: v.string(),
+        price: v.number(), // in cents
+        estimatedDays: v.object({
+          min: v.number(),
+          max: v.number(),
+        }),
+      })),
     })),
   }), v.null()),
   handler: async (ctx, args) => {
@@ -289,6 +321,7 @@ export const getOrderByNumber = query({
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
+        shippingOption: item.shippingOption,
       })),
     };
   },
@@ -411,6 +444,16 @@ export const getAllOrders = query({
       quantity: v.number(),
       unitPrice: v.number(),
       totalPrice: v.number(),
+      shippingOption: v.optional(v.object({
+        id: v.string(),
+        name: v.string(),
+        description: v.string(),
+        price: v.number(), // in cents
+        estimatedDays: v.object({
+          min: v.number(),
+          max: v.number(),
+        }),
+      })),
     })),
   })),
   handler: async (ctx, args) => {
@@ -453,6 +496,7 @@ export const getAllOrders = query({
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,
+            shippingOption: item.shippingOption,
           })),
         };
       })

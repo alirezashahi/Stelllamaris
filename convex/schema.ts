@@ -200,6 +200,19 @@ export default defineSchema({
       country: v.string(),
     }),
     
+    // Selected shipping option
+    shippingOption: v.optional(v.object({
+      name: v.string(),
+      description: v.string(),
+      price: v.number(),
+      estimatedDays: v.object({
+        min: v.number(),
+        max: v.number(),
+      }),
+      carrier: v.optional(v.string()),
+      serviceType: v.optional(v.string()),
+    })),
+    
     // Payment info
     paymentStatus: v.union(
       v.literal("pending"),
@@ -242,6 +255,16 @@ export default defineSchema({
     quantity: v.number(),
     unitPrice: v.number(),
     totalPrice: v.number(),
+    shippingOption: v.optional(v.object({
+      id: v.string(),
+      name: v.string(),
+      description: v.string(),
+      price: v.number(), // in cents
+      estimatedDays: v.object({
+        min: v.number(),
+        max: v.number(),
+      }),
+    })),
   }).index("by_order_id", ["orderId"]),
 
   // Product reviews
@@ -416,6 +439,23 @@ export default defineSchema({
     .index("by_return_request", ["returnRequestId"])
     .index("by_sender", ["senderId"])
     .index("by_return_and_read", ["returnRequestId", "isRead"]),
+
+  // Product shipping options
+  productShippingOptions: defineTable({
+    productId: v.id("products"),
+    name: v.string(), // e.g., "Standard Shipping", "Express", "Overnight"
+    description: v.string(), // e.g., "5-7 business days"
+    price: v.number(), // Shipping cost in cents
+    estimatedDays: v.object({
+      min: v.number(),
+      max: v.number(),
+    }),
+    isActive: v.boolean(),
+    sortOrder: v.number(),
+    // Shipping method details
+    carrier: v.optional(v.string()), // e.g., "UPS", "FedEx", "USPS"
+    serviceType: v.optional(v.string()), // e.g., "Ground", "2-Day", "Overnight"
+  }).index("by_product_id", ["productId"]),
 
   // Site settings
   siteSettings: defineTable({

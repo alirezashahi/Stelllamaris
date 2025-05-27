@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Upload, X, Star, Image as ImageIcon, Trash2, Plus } from 'lucide-react';
 
 interface TempImage {
@@ -47,12 +47,21 @@ const CreateProductImageVariantManager: React.FC<CreateProductImageVariantManage
     stockQuantity: 0
   });
 
-  // Effect to clear parent's temp images/variants on mount
+  // Initialize parent state on mount - done safely without causing re-renders
+  const isInitialized = useRef(false);
+  
   useEffect(() => {
-    onImagesChange([]);
-    onVariantsChange([]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array means this runs only on mount and unmount
+    if (!isInitialized.current) {
+      isInitialized.current = true;
+      // Initialize empty arrays if needed
+      if (generalImages.length === 0) {
+        onImagesChange([]);
+      }
+      if (variants.length === 0) {
+        onVariantsChange([]);
+      }
+    }
+  }, [generalImages.length, variants.length, onImagesChange, onVariantsChange]);
 
   // Helper to generate unique IDs
   const generateId = useCallback(() => `temp-${Date.now()}-${Math.random()}`, []);

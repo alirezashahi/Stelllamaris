@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight, Image, Palette, Check, Share2, Copy, MessageCircle } from 'lucide-react';
+import { Star, Heart, ShoppingCart, ChevronLeft, ChevronRight, Image, Palette, Check, Share2, Copy, MessageCircle, Truck, Clock } from 'lucide-react';
 import { Id } from '../../../convex/_generated/dataModel';
 import ReviewSection from '../reviews/ReviewSection';
 import ReturnPolicy from '../policies/ReturnPolicy';
@@ -19,6 +19,7 @@ const ProductDetailPage: React.FC = () => {
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [selectedShippingOption, setSelectedShippingOption] = useState<Id<"productShippingOptions"> | null>(null);
   const prevSelectedColorVariantRef = useRef<Id<"productVariants"> | undefined>();
   
   const { addToCart } = useCart();
@@ -82,6 +83,12 @@ const ProductDetailPage: React.FC = () => {
     } : "skip"
   );
 
+  // Get shipping options for this product
+  const shippingOptions = useQuery(
+    api.shippingOptions.getProductShippingOptions,
+    product ? { productId: product._id } : "skip"
+  );
+
   // Group variants by type
   const variantsByType = productVariants?.reduce((acc, variant) => {
     if (!acc[variant.type]) {
@@ -124,6 +131,13 @@ const ProductDetailPage: React.FC = () => {
       setSelectedImageIndex(0);
     }
   }, [selectedColorVariant]);
+
+  // Auto-select first shipping option
+  useEffect(() => {
+    if (shippingOptions && shippingOptions.length > 0 && !selectedShippingOption) {
+      setSelectedShippingOption(shippingOptions[0]._id);
+    }
+  }, [shippingOptions, selectedShippingOption]);
 
   // Track product view
   useEffect(() => {
@@ -217,13 +231,29 @@ const ProductDetailPage: React.FC = () => {
     try {
       const currentPrice = product.salePrice || product.basePrice;
       
+      // Get selected shipping option details
+      let shippingOptionData = undefined;
+      if (selectedShippingOption && shippingOptions) {
+        const selectedOption = shippingOptions.find(opt => opt._id === selectedShippingOption);
+        if (selectedOption) {
+          shippingOptionData = {
+            id: selectedOption._id,
+            name: selectedOption.name,
+            description: selectedOption.description,
+            price: selectedOption.price, // already in cents
+            estimatedDays: selectedOption.estimatedDays,
+          };
+        }
+      }
+      
       addToCart({
         productId: product._id,
         productName: product.name,
         productSlug: product.slug,
         basePrice: currentPrice,
         imageUrl: selectedImage?.imageUrl || '',
-        quantity: quantity
+        quantity: quantity,
+        shippingOption: shippingOptionData
       });
 
       setAddedToCart(true);
@@ -510,6 +540,72 @@ const ProductDetailPage: React.FC = () => {
                         {variant.name}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Shipping Options */}
+              {shippingOptions && shippingOptions.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Shipping Options
+                  </label>
+                  <div className="space-y-3">
+                    {shippingOptions.map((option) => {
+                      const isSelected = selectedShippingOption === option._id;
+                      const formatPrice = (cents: number) => {
+                        return new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: 'USD',
+                        }).format(cents / 100);
+                      };
+
+                      return (
+                        <div
+                          key={option._id}
+                          onClick={() => setSelectedShippingOption(option._id)}
+                          className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-stellamaris-500 bg-stellamaris-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-4 h-4 rounded-full border-2 ${
+                                isSelected
+                                  ? 'border-stellamaris-500 bg-stellamaris-500'
+                                  : 'border-gray-300'
+                              }`}>
+                                {isSelected && (
+                                  <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <Truck className="h-4 w-4 text-gray-600" />
+                                  <span className="font-medium text-gray-900">{option.name}</span>
+                                </div>
+                                <div className="flex items-center space-x-2 mt-1">
+                                  <Clock className="h-3 w-3 text-gray-500" />
+                                  <span className="text-sm text-gray-600">{option.description}</span>
+                                  {option.carrier && (
+                                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                      {option.carrier}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-semibold text-gray-900">
+                                {option.price === 0 ? 'Free' : formatPrice(option.price)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -47,6 +47,7 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
 
   const [uploading, setUploading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   // Check return eligibility
   const returnEligibility = useQuery(
@@ -56,6 +57,10 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
 
   // Create return request mutation
   const createReturnRequest = useMutation(api.returns.createReturnRequest);
+  
+  // File upload mutations
+  const generateUploadUrl = useMutation(api.fileUpload.generateUploadUrl);
+  const saveReturnEvidenceImage = useMutation(api.fileUpload.saveReturnEvidenceImage);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -81,14 +86,46 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
 
     setUploading(true);
     try {
-      // TODO: Implement file upload to your preferred storage service
-      // For now, we'll simulate the upload
       const uploadedUrls: string[] = [];
       
       for (let i = 0; i < files.length; i++) {
-        // Simulate upload delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        uploadedUrls.push(`https://example.com/evidence/${Date.now()}-${i}`);
+        const file = files[i];
+        
+        // Validate file type
+        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+          alert(`File "${file.name}" is not an image or video`);
+          continue;
+        }
+
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File "${file.name}" is too large. Maximum size is 10MB`);
+          continue;
+        }
+        
+        // Generate upload URL
+        const uploadUrl = await generateUploadUrl();
+        
+        // Upload file to Convex storage
+        const result = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        
+        if (!result.ok) {
+          throw new Error(`Failed to upload ${file.name}`);
+        }
+        
+        const { storageId } = await result.json();
+        
+        // Save and get the file URL
+        const fileUrl = await saveReturnEvidenceImage({
+          storageId,
+          altText: `Return evidence ${i + 1}`,
+        });
+        
+        uploadedUrls.push(fileUrl);
       }
 
       setFormData(prev => ({
@@ -351,8 +388,12 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
                         <img
                           src={url}
                           alt={`Evidence ${index + 1}`}
-                          className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
-                          onClick={() => window.open(url, '_blank')}
+                          className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:border-stellamaris-400 transition-colors"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setLightboxImage(url);
+                          }}
                         />
                       ) : (
                         <div className="w-full h-24 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
@@ -409,6 +450,28 @@ const ReturnRequestForm: React.FC<ReturnRequestFormProps> = ({
           </button>
         </div>
       </form>
+
+      {/* Image Lightbox */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60]"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <img
+              src={lightboxImage}
+              alt="Evidence image"
+              className="max-w-full max-h-full object-contain"
+            />
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-4 right-4 bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-2 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

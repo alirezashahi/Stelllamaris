@@ -91,13 +91,45 @@ export const addPaymentMethod = mutation({
     // Parse expiry date
     const [expiryMonth, expiryYear] = args.expiryDate.split('/');
 
+    // Check for existing payment method with same last 4 digits and expiry date
+    const existingMethods = await ctx.db
+      .query("userPaymentMethods")
+      .withIndex("by_user_id", (q) => q.eq("userId", convexUserId))
+      .collect();
+
+    const duplicateMethod = existingMethods.find(method => 
+      method.last4Digits === last4Digits && 
+      method.expiryMonth === expiryMonth && 
+      method.expiryYear === expiryYear
+    );
+
+    if (duplicateMethod) {
+      // If duplicate found, update the existing method instead of creating a new one
+      const updateData: any = {
+        nameOnCard: args.nameOnCard,
+        cardType: cardType, // Update card type in case it changed
+      };
+
+      // Handle default setting for existing method
+      if (args.isDefault) {
+        // Unset all other default payment methods
+        for (const method of existingMethods) {
+          if (method.isDefault && method._id !== duplicateMethod._id) {
+            await ctx.db.patch(method._id, { isDefault: false });
+          }
+        }
+        updateData.isDefault = true;
+      }
+
+      // Update the existing payment method
+      await ctx.db.patch(duplicateMethod._id, updateData);
+      
+      // Return the existing payment method ID
+      return duplicateMethod._id;
+    }
+
     // If this is being set as default, unset all other default payment methods for this user
     if (args.isDefault) {
-      const existingMethods = await ctx.db
-        .query("userPaymentMethods")
-        .withIndex("by_user_id", (q) => q.eq("userId", convexUserId))
-        .collect();
-
       for (const method of existingMethods) {
         if (method.isDefault) {
           await ctx.db.patch(method._id, { isDefault: false });
@@ -105,6 +137,7 @@ export const addPaymentMethod = mutation({
       }
     }
 
+    // Create new payment method (no duplicate found)
     const paymentMethodId = await ctx.db.insert("userPaymentMethods", {
       userId: convexUserId,
       cardType,

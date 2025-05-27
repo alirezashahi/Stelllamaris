@@ -19,6 +19,8 @@ import {
 import { Id } from '../../../convex/_generated/dataModel';
 import ProductImageManager from './ProductImageManager';
 import CreateProductImageVariantManager from './CreateProductImageVariantManager';
+import ShippingOptionsManager from './ShippingOptionsManager';
+import CreateShippingOptionsManager from './CreateShippingOptionsManager';
 
 interface Product {
   _id: Id<"products">;
@@ -214,6 +216,7 @@ const ProductManagement: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [tempImages, setTempImages] = useState<TempImage[]>([]);
   const [tempVariants, setTempVariants] = useState<TempVariant[]>([]);
+  const [tempShippingOptions, setTempShippingOptions] = useState<any[]>([]);
   
   const [productFormData, setProductFormData] = useState<ProductFormData>({
     name: '',
@@ -253,6 +256,7 @@ const ProductManagement: React.FC = () => {
   const generateUploadUrl = useMutation(api.fileUpload.generateUploadUrl);
   const saveProductImage = useMutation(api.fileUpload.saveProductImage);
   const createProductVariant = useMutation(api.products.createProductVariant);
+  const createShippingOption = useMutation(api.shippingOptions.createProductShippingOption);
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -295,6 +299,9 @@ const ProductManagement: React.FC = () => {
 
         // Create variants and upload their images
         await createTempVariants(productId, tempVariants);
+
+        // Create shipping options
+        await createTempShippingOptions(productId, tempShippingOptions);
       }
       
       setShowCreateForm(false);
@@ -377,6 +384,27 @@ const ProductManagement: React.FC = () => {
         }
       } catch (error) {
         console.error(`Failed to create variant ${variant.name}:`, error);
+      }
+    }
+  };
+
+  const createTempShippingOptions = async (productId: Id<"products">, shippingOptions: any[]) => {
+    for (const option of shippingOptions) {
+      try {
+        await createShippingOption({
+          productId,
+          name: option.name,
+          description: option.description,
+          price: Math.round(option.price * 100), // Convert dollars to cents
+          estimatedDays: {
+            min: option.minDays,
+            max: option.maxDays,
+          },
+          carrier: option.carrier || undefined,
+          serviceType: option.serviceType || undefined,
+        });
+      } catch (error) {
+        console.error(`Failed to create shipping option ${option.name}:`, error);
       }
     }
   };
@@ -671,8 +699,9 @@ const ProductManagement: React.FC = () => {
                       isActive: p.status === 'active',
                     });
                     // Clear temp data when editing existing product
-                    setTempImages([]);
-                    setTempVariants([]);
+                        setTempImages([]);
+    setTempVariants([]);
+    setTempShippingOptions([]);
                     setShowCreateForm(true);
                   }}
                   onToggleStatus={(id, isActive) => handleUpdateProduct(id, { isActive })}
@@ -857,16 +886,35 @@ const ProductManagement: React.FC = () => {
 
               {/* Image Upload Section */}
               {editingProduct ? (
-                <ProductImageManager
-                  productId={editingProduct._id}
-                  productName={editingProduct.name}
-                />
+                <div className="space-y-6">
+                  <ProductImageManager
+                    productId={editingProduct._id}
+                    productName={editingProduct.name}
+                  />
+                  
+                  {/* Shipping Options Management */}
+                  <div className="border-t pt-6">
+                    <h4 className="text-lg font-medium text-gray-900 mb-4">Shipping Options</h4>
+                    <ShippingOptionsManager
+                      productId={editingProduct._id}
+                      productName={editingProduct.name}
+                    />
+                  </div>
+                </div>
               ) : (
-                <CreateProductImageVariantManager
-                  onImagesChange={setTempImages}
-                  onVariantsChange={setTempVariants}
-                  productName={productFormData.name || 'New Product'}
-                />
+                <div className="space-y-6">
+                  <CreateProductImageVariantManager
+                    onImagesChange={setTempImages}
+                    onVariantsChange={setTempVariants}
+                    productName={productFormData.name || 'New Product'}
+                  />
+                  
+                  {/* Shipping Options for New Product */}
+                  <CreateShippingOptionsManager
+                    onShippingOptionsChange={setTempShippingOptions}
+                    productName={productFormData.name || 'New Product'}
+                  />
+                </div>
               )}
 
               <div className="flex items-center">
@@ -901,6 +949,91 @@ const ProductManagement: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Product Detail Modal */}
+      {selectedProduct && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-medium text-gray-900">
+                Product Details: {selectedProduct.name}
+              </h3>
+              <button
+                onClick={() => setSelectedProduct(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              {/* Basic Product Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product Name
+                  </label>
+                  <p className="text-sm text-gray-900">{selectedProduct.name}</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Category
+                  </label>
+                  <p className="text-sm text-gray-900">{getCategoryName(selectedProduct.categoryId)}</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price
+                  </label>
+                  <p className="text-sm text-gray-900">
+                    ${selectedProduct.basePrice.toFixed(2)}
+                    {selectedProduct.salePrice && (
+                      <span className="ml-2 line-through text-gray-500">
+                        ${selectedProduct.salePrice.toFixed(2)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Stock
+                  </label>
+                  <p className="text-sm text-gray-900">{selectedProduct.totalStock}</p>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <p className="text-sm text-gray-900">{selectedProduct.description}</p>
+              </div>
+
+              {/* Product Images */}
+              <div>
+                <h4 className="text-lg font-medium text-gray-900 mb-4">Product Images</h4>
+                <ProductImageManager
+                  productId={selectedProduct._id}
+                  productName={selectedProduct.name}
+                />
+              </div>
+
+              {/* Shipping Options */}
+              <div className="border-t pt-6">
+                <h4 className="text-lg font-medium text-gray-900 mb-4">Shipping Options</h4>
+                <ShippingOptionsManager
+                  productId={selectedProduct._id}
+                  productName={selectedProduct.name}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}

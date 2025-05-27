@@ -27,6 +27,7 @@ import type * as returns from "../returns.js";
 import type * as reviews from "../reviews.js";
 import type * as sampleData from "../sampleData.js";
 import type * as sampleVariantData from "../sampleVariantData.js";
+import type * as shippingOptions from "../shippingOptions.js";
 import type * as users from "../users.js";
 import type * as wishlist from "../wishlist.js";
 
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   reviews: typeof reviews;
   sampleData: typeof sampleData;
   sampleVariantData: typeof sampleVariantData;
+  shippingOptions: typeof shippingOptions;
   users: typeof users;
   wishlist: typeof wishlist;
 }>;

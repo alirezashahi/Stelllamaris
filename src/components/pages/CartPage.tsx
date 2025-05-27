@@ -38,10 +38,30 @@ const CartPage = () => {
     setAppliedPromo(null)
   }
 
+  // Calculate shipping from cart items' selected options
+  const calculateShippingCost = () => {
+    let totalShipping = 0;
+    let hasShippingOptions = false;
+
+    items.forEach(item => {
+      if (item.shippingOption) {
+        totalShipping += (item.shippingOption.price / 100) * item.quantity; // Convert cents to dollars
+        hasShippingOptions = true;
+      }
+    });
+
+    // If no shipping options selected, use fallback logic
+    if (!hasShippingOptions) {
+      return subtotal > 500 ? 0 : 25; // Original fallback
+    }
+
+    return totalShipping;
+  };
+
   const subtotal = getTotalPrice()
   const promoDiscount = appliedPromo ? subtotal * appliedPromo.discount : 0
   const charityDonation = subtotal * 0.05 // 5% charity donation
-  const shipping = subtotal > 500 ? 0 : 25 // Free shipping over $500
+  const shipping = calculateShippingCost()
   const total = subtotal - promoDiscount + shipping
 
   if (items.length === 0) {
@@ -119,6 +139,12 @@ const CartPage = () => {
                                   ({item.variant.priceAdjustment > 0 ? '+' : ''}${item.variant.priceAdjustment})
                                 </span>
                               )}
+                            </p>
+                          )}
+                          {item.shippingOption && (
+                            <p className="text-sm text-blue-600 mt-1 flex items-center">
+                              📦 {item.shippingOption.name} - ${(item.shippingOption.price / 100).toFixed(2)}
+                              <span className="text-gray-500 ml-1">({item.shippingOption.description})</span>
                             </p>
                           )}
                           <p className="text-lg font-bold text-gray-900 mt-2">${itemPrice}</p>

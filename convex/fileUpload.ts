@@ -164,4 +164,46 @@ export const saveReviewImage = mutation({
 
     return fileUrl;
   },
+});
+
+/**
+ * Save uploaded file as return evidence image
+ */
+export const saveReturnEvidenceImage = mutation({
+  args: {
+    storageId: v.id("_storage"),
+    altText: v.optional(v.string()),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    // Get the file URL
+    const fileUrl = await ctx.storage.getUrl(args.storageId);
+    
+    if (!fileUrl) {
+      throw new Error("Failed to get file URL");
+    }
+
+    return fileUrl;
+  },
+});
+
+/**
+ * Save uploaded file as return message attachment
+ */
+export const saveReturnMessageAttachment = mutation({
+  args: {
+    storageId: v.id("_storage"),
+    altText: v.optional(v.string()),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    // Get the file URL
+    const fileUrl = await ctx.storage.getUrl(args.storageId);
+    
+    if (!fileUrl) {
+      throw new Error("Failed to get file URL");
+    }
+
+    return fileUrl;
+  },
 }); 

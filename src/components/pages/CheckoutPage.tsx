@@ -136,7 +136,28 @@ const CheckoutPage: React.FC = () => {
   const subtotal = getTotalPrice();
   const discountAmount = appliedPromoCode?.discountAmount || 0;
   const discountedSubtotal = subtotal - discountAmount;
-  const shipping = discountedSubtotal > 100 ? 0 : 15;
+
+  // Calculate shipping from cart items' selected options
+  const calculateShippingCost = () => {
+    let totalShipping = 0;
+    let hasShippingOptions = false;
+
+    cartItems.forEach(item => {
+      if (item.shippingOption) {
+        totalShipping += (item.shippingOption.price / 100) * item.quantity; // Convert cents to dollars
+        hasShippingOptions = true;
+      }
+    });
+
+    // If no shipping options selected, use fallback logic
+    if (!hasShippingOptions) {
+      return discountedSubtotal > 100 ? 0 : 15; // Original fallback
+    }
+
+    return totalShipping;
+  };
+
+  const shipping = calculateShippingCost();
   const tax = discountedSubtotal * 0.08; // 8% tax
   const charityDonation = Math.round(subtotal * 0.05 * 100) / 100; // 5% of subtotal
   const total = discountedSubtotal + shipping + tax + donationAmount;
@@ -210,6 +231,7 @@ const CheckoutPage: React.FC = () => {
             nameOnCard: paymentInfo.nameOnCard,
             isDefault: !savedPaymentMethods || savedPaymentMethods.length === 0, // Make default if it's the first payment method
           });
+          console.log('Payment method saved successfully (or updated if it was a duplicate)');
         } catch (error) {
           console.error('Failed to save payment method:', error);
         }
@@ -224,6 +246,13 @@ const CheckoutPage: React.FC = () => {
         quantity: item.quantity,
         unitPrice: item.basePrice + (item.variant?.priceAdjustment || 0),
         totalPrice: (item.basePrice + (item.variant?.priceAdjustment || 0)) * item.quantity,
+        shippingOption: item.shippingOption ? {
+          id: item.shippingOption.id,
+          name: item.shippingOption.name,
+          description: item.shippingOption.description,
+          price: item.shippingOption.price,
+          estimatedDays: item.shippingOption.estimatedDays,
+        } : undefined,
       }));
 
       // Create order in database
@@ -701,6 +730,9 @@ const CheckoutPage: React.FC = () => {
                       />
                       <label htmlFor="savePaymentMethod" className="text-sm text-gray-700">
                         Save this payment method for future orders (card details will be securely stored)
+                        <span className="block text-xs text-gray-500 mt-1">
+                          Note: If this card already exists, we'll update it instead of creating a duplicate
+                        </span>
                       </label>
                     </div>
                   )}
@@ -859,24 +891,33 @@ const CheckoutPage: React.FC = () => {
               {/* Cart Items */}
               <div className="space-y-3 mb-4">
                 {cartItems.map((item) => (
-                  <div key={`${item.productId}-${item.variant?.id}`} className="flex items-center space-x-3">
-                    <img
-                      src={item.imageUrl || '/placeholder-bag.jpg'}
-                      alt={item.productName}
-                      className="w-12 h-12 object-cover rounded"
-                    />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-900">{item.productName}</h4>
-                      {item.variant && (
-                        <p className="text-xs text-gray-500">
-                          {item.variant.name}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                  <div key={`${item.productId}-${item.variant?.id}`} className="border-b border-gray-100 pb-3 last:border-b-0">
+                    <div className="flex items-center space-x-3">
+                      <img
+                        src={item.imageUrl || '/placeholder-bag.jpg'}
+                        alt={item.productName}
+                        className="w-12 h-12 object-cover rounded"
+                      />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-900">{item.productName}</h4>
+                        {item.variant && (
+                          <p className="text-xs text-gray-500">
+                            {item.variant.name}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">
+                        ${((item.basePrice + (item.variant?.priceAdjustment || 0)) * item.quantity).toFixed(2)}
+                      </span>
                     </div>
-                    <span className="text-sm font-medium text-gray-900">
-                      ${((item.basePrice + (item.variant?.priceAdjustment || 0)) * item.quantity).toFixed(2)}
-                    </span>
+                    {item.shippingOption && (
+                      <div className="mt-2 pl-15 flex items-center text-xs text-gray-600">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                          📦 {item.shippingOption.name}: ${(item.shippingOption.price / 100).toFixed(2)} × {item.quantity}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

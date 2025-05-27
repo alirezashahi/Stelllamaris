@@ -207,10 +207,12 @@ const UserAccountPage = () => {
           ...paymentMethodForm
         })
       } else {
-        await addPaymentMethod({
+        const result = await addPaymentMethod({
           clerkUserId: user.id,
           ...paymentMethodForm
         })
+        // Note: The backend now handles duplicates automatically by updating existing cards
+        console.log('Payment method saved successfully:', result)
       }
       setShowPaymentMethodForm(false)
       setEditingPaymentMethod(null)
@@ -880,7 +882,7 @@ const UserAccountPage = () => {
                                 <p className="font-medium text-blue-800">Secure Payment Method</p>
                                 <p className="text-blue-700">
                                   Only the last 4 digits and expiry date are stored. Full card details are never saved for your security.
-                                  New payment methods will be added when you make purchases.
+                                  If you try to save the same card again, we'll just update the existing one instead of creating duplicates.
                                 </p>
                               </div>
                             </div>

@@ -14,6 +14,7 @@ const ReturnManagement: React.FC = () => {
   const [showMessages, setShowMessages] = useState(false)
   const [newMessage, setNewMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   // Get return requests based on selected status
   const returnRequests = useQuery(api.returns.getAllReturnRequests, {
@@ -394,7 +395,11 @@ const ReturnManagement: React.FC = () => {
                           src={url}
                           alt={`Evidence ${index + 1}`}
                           className="w-full h-32 object-cover rounded-lg border border-gray-200 cursor-pointer hover:border-stellamaris-400 transition-colors"
-                          onClick={() => window.open(url, '_blank')}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setLightboxImage(url);
+                          }}
                         />
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity rounded-lg flex items-center justify-center">
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -500,8 +505,8 @@ const ReturnManagement: React.FC = () => {
                                         <img
                                           src={url}
                                           alt={`Attachment ${index + 1}`}
-                                          className="max-w-xs h-32 object-cover rounded-lg border cursor-pointer"
-                                          onClick={() => window.open(url, '_blank')}
+                                          className="max-w-xs h-32 object-cover rounded-lg border cursor-pointer hover:border-stellamaris-400 transition-colors"
+                                          onClick={() => setLightboxImage(url)}
                                         />
                                       </div>
                                     ) : (
@@ -598,6 +603,28 @@ const ReturnManagement: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Lightbox */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60]"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <img
+              src={lightboxImage}
+              alt="Return image"
+              className="max-w-full max-h-full object-contain"
+            />
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-4 right-4 bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-2 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
           </div>
         </div>
       )}

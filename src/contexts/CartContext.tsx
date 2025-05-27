@@ -14,6 +14,16 @@ export interface CartItem {
   quantity: number
   basePrice: number
   imageUrl?: string
+  shippingOption?: {
+    id: string
+    name: string
+    description: string
+    price: number // in cents
+    estimatedDays: {
+      min: number
+      max: number
+    }
+  }
 }
 
 interface CartContextType {

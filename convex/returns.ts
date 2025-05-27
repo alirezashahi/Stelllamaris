@@ -261,6 +261,25 @@ export const getAllReturnRequests = query({
         const order = await ctx.db.get(request.orderId);
         const user = await ctx.db.get(request.userId);
         
+        // Resolve evidence URLs from storage IDs
+        let resolvedEvidenceUrls: string[] = [];
+        if (request.evidenceUrls && request.evidenceUrls.length > 0) {
+          resolvedEvidenceUrls = await Promise.all(
+            request.evidenceUrls.map(async (url) => {
+              // Check if it's a storage ID (starts with kg) or already a URL
+              if (url.startsWith('kg')) {
+                try {
+                  const resolvedUrl = await ctx.storage.getUrl(url as any);
+                  return resolvedUrl || url;
+                } catch {
+                  return url; // Return original if resolution fails
+                }
+              }
+              return url; // Already a URL
+            })
+          );
+        }
+        
         return {
           _id: request._id,
           _creationTime: request._creationTime,
@@ -279,7 +298,7 @@ export const getAllReturnRequests = query({
           reviewedAt: request.reviewedAt,
           completedAt: request.completedAt,
           returnItems: request.returnItems,
-          evidenceUrls: request.evidenceUrls,
+          evidenceUrls: resolvedEvidenceUrls,
         };
       })
     );
@@ -437,10 +456,30 @@ export const getReturnMessages = query({
       .order("asc")
       .collect();
 
-    // Enrich with sender information
+    // Enrich with sender information and resolve attachment URLs
     const enrichedMessages = await Promise.all(
       messages.map(async (message) => {
         const sender = await ctx.db.get(message.senderId);
+        
+        // Resolve attachment URLs from storage IDs
+        let resolvedAttachments: string[] = [];
+        if (message.attachments && message.attachments.length > 0) {
+          resolvedAttachments = await Promise.all(
+            message.attachments.map(async (url) => {
+              // Check if it's a storage ID (starts with kg) or already a URL
+              if (url.startsWith('kg')) {
+                try {
+                  const resolvedUrl = await ctx.storage.getUrl(url as any);
+                  return resolvedUrl || url;
+                } catch {
+                  return url; // Return original if resolution fails
+                }
+              }
+              return url; // Already a URL
+            })
+          );
+        }
+        
         return {
           _id: message._id,
           _creationTime: message._creationTime,
@@ -450,7 +489,7 @@ export const getReturnMessages = query({
           message: message.message,
           messageType: message.messageType,
           isRead: message.isRead,
-          attachments: message.attachments,
+          attachments: resolvedAttachments,
         };
       })
     );
@@ -488,10 +527,30 @@ export const getReturnMessagesAdmin = query({
       .order("asc")
       .collect();
 
-    // Enrich with sender information
+    // Enrich with sender information and resolve attachment URLs
     const enrichedMessages = await Promise.all(
       messages.map(async (message) => {
         const sender = await ctx.db.get(message.senderId);
+        
+        // Resolve attachment URLs from storage IDs
+        let resolvedAttachments: string[] = [];
+        if (message.attachments && message.attachments.length > 0) {
+          resolvedAttachments = await Promise.all(
+            message.attachments.map(async (url) => {
+              // Check if it's a storage ID (starts with kg) or already a URL
+              if (url.startsWith('kg')) {
+                try {
+                  const resolvedUrl = await ctx.storage.getUrl(url as any);
+                  return resolvedUrl || url;
+                } catch {
+                  return url; // Return original if resolution fails
+                }
+              }
+              return url; // Already a URL
+            })
+          );
+        }
+        
         return {
           _id: message._id,
           _creationTime: message._creationTime,
@@ -501,7 +560,7 @@ export const getReturnMessagesAdmin = query({
           message: message.message,
           messageType: message.messageType,
           isRead: message.isRead,
-          attachments: message.attachments,
+          attachments: resolvedAttachments,
         };
       })
     );
