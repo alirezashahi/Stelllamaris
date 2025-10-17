@@ -131,6 +131,23 @@ function parseChecklist(md) {
   return tasks;
 }
 
+async function addLabelsToIssue(issueNumber, labels) {
+  return ghRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues/${issueNumber}/labels`, 'POST', { labels });
+}
+
+async function findExistingIssueByTitle(title) {
+  const q = `repo:${GITHUB_OWNER}/${GITHUB_REPO} is:issue in:title "${title}" state:open`;
+  try {
+    const res = await ghRequest(`/search/issues?q=${encodeURIComponent(q)}`);
+    if (res.items && res.items.length > 0) {
+      return res.items[0];
+    }
+  } catch (e) {
+    // fallback: ignore and create
+  }
+  return null;
+}
+
 async function createIssue(task, milestoneId) {
   const title = `[${task.phase}] ${task.section} — ${task.title}`;
   const body = [
@@ -152,6 +169,13 @@ async function createIssue(task, milestoneId) {
   await ensureLabel(`phase:${task.phase.split(' ')[1]}`);
   await ensureLabel(`section:${task.section}`);
   await ensureLabel('type:feature');
+
+  const existing = await findExistingIssueByTitle(title);
+  if (existing) {
+    // Ensure labels exist on the existing issue
+    await addLabelsToIssue(existing.number, [`phase:${task.phase.split(' ')[1]}`, `section:${task.section}`, 'type:feature']);
+    return { html_url: existing.html_url, title };
+  }
 
   return ghRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues`, 'POST', {
     title,
@@ -175,6 +199,14 @@ async function createTrelloCard(task, issueUrl) {
   const idList = await getOrCreatePhaseList(task.phase);
   const name = `[${task.phase}] ${task.section} — ${task.title}`;
   const desc = `GitHub Issue: ${issueUrl}\n\nSource: ${CHECKLIST_PATH} → ${task.phase}/${task.section}`;
+  // Check if card exists with same name
+  const cards = await trelloRequest(`/boards/${TRELLO_BOARD_ID}/cards`);
+  const existing = cards.find(c => c.name === name);
+  if (existing) {
+    // Update description to ensure link is present
+    await trelloRequest(`/cards/${existing.id}?desc=${encodeURIComponent(desc)}`, 'PUT');
+    return existing;
+  }
   return trelloRequest(`/cards?idList=${idList}&name=${encodeURIComponent(name)}&desc=${encodeURIComponent(desc)}`, 'POST');
 }
 
