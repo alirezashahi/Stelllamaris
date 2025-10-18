@@ -17,6 +17,7 @@ import type * as addresses from "../addresses.js";
 import type * as admin from "../admin.js";
 import type * as cart from "../cart.js";
 import type * as categories from "../categories.js";
+import type * as emails from "../emails.js";
 import type * as fileUpload from "../fileUpload.js";
 import type * as http from "../http.js";
 import type * as orders from "../orders.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   cart: typeof cart;
   categories: typeof categories;
+  emails: typeof emails;
   fileUpload: typeof fileUpload;
   http: typeof http;
   orders: typeof orders;

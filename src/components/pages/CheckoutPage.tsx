@@ -4,7 +4,7 @@ import { CreditCard, Lock, Heart, ArrowLeft, UserPlus, LogIn, MapPin, Percent, P
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCheckout, type ShippingInfo, type PaymentInfo } from '../../contexts/CheckoutContext';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import PromoCodeInput from '../checkout/PromoCodeInput';
 
@@ -60,6 +60,7 @@ const CheckoutPage: React.FC = () => {
   const createOrder = useMutation(api.orders.createOrder);
   const addAddress = useMutation(api.addresses.addAddress);
   const addPaymentMethod = useMutation(api.paymentMethods.addPaymentMethod);
+  const sendOrderConfirmationEmail = useAction(api.emails.sendOrderConfirmationEmail);
 
   // Populate user data if authenticated (but don't overwrite existing data)
   useEffect(() => {
@@ -281,6 +282,13 @@ const CheckoutPage: React.FC = () => {
           : `**** **** **** ${paymentInfo.cardNumber.slice(-4)}`,
         selectedCharityType: selectedCharity as any,
       });
+      
+      // Send confirmation email (non-blocking)
+      try {
+        await sendOrderConfirmationEmail({ orderNumber: orderResult.orderNumber });
+      } catch (e) {
+        console.error('Failed to send confirmation email:', e);
+      }
       
       // Clear cart and checkout data
       clearCart();
@@ -983,4 +991,4 @@ const CheckoutPage: React.FC = () => {
   );
 };
 
-export default CheckoutPage; 
+export default CheckoutPage;
