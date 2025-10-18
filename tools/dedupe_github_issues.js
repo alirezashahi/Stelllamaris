@@ -1,5 +1,12 @@
 import https from 'https';
-import 'dotenv/config';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config();
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER_RAW = process.env.GITHUB_OWNER;
@@ -75,9 +82,49 @@ async function closeIssue(issueNumber) {
   return ghRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues/${issueNumber}`, 'PATCH', { state: 'closed' });
 }
 
+async function ghGraphQLRequest(query, variables = {}) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({ query, variables });
+    const options = {
+      hostname: 'api.github.com',
+      path: '/graphql',
+      method: 'POST',
+      headers: {
+        'User-Agent': 'dedupe-script',
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    };
+    const req = https.request(options, res => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(body || '{}');
+          if (res.statusCode >= 200 && res.statusCode < 300 && !parsed.errors) {
+            resolve(parsed.data || {});
+          } else {
+            reject(new Error(`GitHub GraphQL ${res.statusCode}: ${body}`));
+          }
+        } catch (e) {
+          reject(new Error(`GitHub GraphQL parse error: ${e.message} | raw: ${body}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function deleteIssueByNodeId(issueNodeId) {
+  const mutation = `mutation($issueId: ID!) {\n    deleteIssue(input: { issueId: $issueId }) {\n      clientMutationId\n    }\n  }`;
+  return ghGraphQLRequest(mutation, { issueId: issueNodeId });
+}
+
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
-  await ensureLabel('duplicate');
   const issues = await listAllIssues('open');
 
   // Group by exact title
@@ -97,14 +144,11 @@ async function main() {
       const canonical = sorted[0];
       const dups = sorted.slice(1);
       for (const dup of dups) {
-        const note = `Closing as duplicate of #${canonical.number} (${canonical.html_url}).`;
         if (dryRun) {
-          console.log(`[DRY-RUN] Would close #${dup.number} titled "${title}" → canonical #${canonical.number}`);
+          console.log(`[DRY-RUN] Would delete #${dup.number} titled "${title}" → canonical #${canonical.number}`);
         } else {
-          await addComment(dup.number, note);
-          await addLabels(dup.number, ['duplicate']);
-          await closeIssue(dup.number);
-          console.log(`Closed #${dup.number} as duplicate of #${canonical.number}`);
+          await deleteIssueByNodeId(dup.node_id);
+          console.log(`Deleted #${dup.number} as duplicate of #${canonical.number}`);
         }
       }
     }

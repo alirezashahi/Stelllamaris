@@ -1,9 +1,16 @@
 // top-level module
 import fs from 'fs';
 import https from 'https';
-import 'dotenv/config';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
-const CHECKLIST_PATH = process.env.CHECKLIST_PATH || 'c:\\Users\\shahi\\Desktop\\Stella maris\\Stelllamaris\\DEVELOPMENT_CHECKLIST.md';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config();
+
+const CHECKLIST_PATH = process.env.CHECKLIST_PATH || path.resolve(__dirname, '..', 'DEVELOPMENT_CHECKLIST.md');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER_RAW = process.env.GITHUB_OWNER;
