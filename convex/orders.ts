@@ -154,6 +154,8 @@ export const getUserOrders = query({
       quantity: v.number(),
       unitPrice: v.number(),
       totalPrice: v.number(),
+      productId: v.id("products"),
+      variantId: v.optional(v.id("productVariants")),
       shippingOption: v.optional(v.object({
         id: v.string(),
         name: v.string(),
@@ -206,6 +208,8 @@ export const getUserOrders = query({
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,
+            productId: item.productId,
+            variantId: item.variantId,
             shippingOption: item.shippingOption,
           })),
         };
@@ -269,6 +273,8 @@ export const getOrderByNumber = query({
       quantity: v.number(),
       unitPrice: v.number(),
       totalPrice: v.number(),
+      productId: v.id("products"),
+      variantId: v.optional(v.id("productVariants")),
       shippingOption: v.optional(v.object({
         id: v.string(),
         name: v.string(),
