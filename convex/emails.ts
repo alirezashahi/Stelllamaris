@@ -3,11 +3,15 @@ import { v } from "convex/values";
 import { api } from "./_generated/api";
 
 // Define the type for a single order item based on the schema
+// Top-level types used by sendOrderConfirmationEmail
 type OrderItem = {
   productName: string;
   variantName?: string;
   quantity: number;
   totalPrice: number;
+  productId: any;
+  variantId?: any;
+  imageUrl?: string;
 };
 
 // Define the type for the order based on getOrderByNumber query
@@ -61,8 +65,13 @@ function renderOrderEmailHtml(order: Order): string {
       (item: OrderItem) => `
         <tr>
           <td style="padding:8px;border-bottom:1px solid #eee;">
-            <div style="font-weight:600;color:#111;">${item.productName}${item.variantName ? ` – ${item.variantName}` : ""}</div>
-            <div style="font-size:12px;color:#555;">Qty: ${item.quantity}</div>
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+              ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.productName}" style="width:72px;height:auto;border-radius:8px;border:1px solid #e5e7eb;" />` : ""}
+              <div>
+                <div style="font-weight:600;color:#111;">${item.productName}${item.variantName ? ` – ${item.variantName}` : ""}</div>
+                <div style="font-size:12px;color:#555;">Qty: ${item.quantity}</div>
+              </div>
+            </div>
           </td>
           <td style="padding:8px;text-align:right;border-bottom:1px solid #eee;color:#111;">${formatMoney(item.totalPrice)}</td>
         </tr>
@@ -157,6 +166,32 @@ export const sendOrderConfirmationEmail = action({
       return { status: "not_found" };
     }
 
+    // Enrich items with primary image URLs (variant-primary if available, else product-primary)
+    const itemsWithImages: OrderItem[] = await Promise.all(
+      order.items.map(async (item) => {
+        try {
+          if (item.variantId) {
+            const images = await ctx.runQuery(api.products.getVariantImages, {
+              productId: item.productId,
+              variantId: item.variantId,
+            });
+            const primary = images.find(i => i.isPrimary) || images[0];
+            return { ...item, imageUrl: primary?.imageUrl };
+          } else {
+            const images = await ctx.runQuery(api.products.getAllProductImages, {
+              productId: item.productId,
+            });
+            const primary = images.find(i => i.isPrimary) || images[0];
+            return { ...item, imageUrl: primary?.imageUrl };
+          }
+        } catch {
+          return item; // Fail gracefully if image lookup fails
+        }
+      })
+    );
+
+    const html = renderOrderEmailHtml({ ...order, items: itemsWithImages });
+
     const hasApiKey = !!process.env.RESEND_API_KEY;
     const fromEmail = process.env.EMAIL_FROM || "orders@stellamaris.com";
     const fromName = process.env.EMAIL_FROM_NAME || "Stellamaris";
@@ -166,8 +201,6 @@ export const sendOrderConfirmationEmail = action({
     if (!hasApiKey) {
       throw new Error("RESEND_API_KEY not configured in Convex environment");
     }
-
-    const html = renderOrderEmailHtml(order);
 
     console.log("[emails] sending to Resend", { to: order.email, from: `${fromName} <${fromEmail}>` });
 
@@ -182,6 +215,27 @@ export const sendOrderConfirmationEmail = action({
         to: [order.email],
         subject: `Order ${order.orderNumber} Confirmation`,
         html,
+        text: [
+          `ORDER CONFIRMED`,
+          ``,
+          `Thank you for your purchase! Your order has been placed.`,
+          ``,
+          `Order Number`,
+          `${order.orderNumber}`,
+          ``,
+          `Total: $${order.totalAmount.toFixed(2)}`,
+          ``,
+          `Items:`,
+          ...order.items.map(i =>
+            `- ${i.productName}${i.variantName ? ` (${i.variantName})` : ""} x${i.quantity} — $${i.totalPrice.toFixed(2)}`
+          ),
+          ``,
+          `Shipping to:`,
+          `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`,
+          `${order.shippingAddress.addressLine1}${order.shippingAddress.addressLine2 ? `, ${order.shippingAddress.addressLine2}` : ""}`,
+          `${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.zipCode}`,
+          `${order.shippingAddress.country}`,
+        ].join("\n")
       }),
     });
 

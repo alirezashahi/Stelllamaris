@@ -321,6 +321,8 @@ export const getOrderByNumber = query({
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
+        productId: item.productId,
+        variantId: item.variantId,
         shippingOption: item.shippingOption,
       })),
     };
@@ -504,4 +506,4 @@ export const getAllOrders = query({
 
     return ordersWithItems;
   },
-}); 
+});
