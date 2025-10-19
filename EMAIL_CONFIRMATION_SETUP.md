@@ -11,16 +11,13 @@ This guide connects the Stellamaris checkout flow to Resend to send order confir
 Set the following in your Convex environment (these are read inside `convex/emails.ts`):
 
 - `RESEND_API_KEY` (required): Your Resend API key.
-- `EMAIL_FROM` (recommended): A verified sender address, e.g., `orders@stellamaris.com`.
-- `EMAIL_FROM_NAME` (optional): Display name, e.g., `Stellamaris`.
+- `EMAIL_FROM` (recommended): A verified sender address, e.g., `orders@info.thestellamaris.shop`.
 
 Commands:
 
-```bash
 npx convex env set RESEND_API_KEY "<YOUR_RESEND_API_KEY>"
-npx convex env set EMAIL_FROM "orders@stellamaris.com"
+npx convex env set EMAIL_FROM "orders@info.thestellamaris.shop"
 npx convex env set EMAIL_FROM_NAME "Stellamaris"
-```
 
 If your dev server is already running, restart it to pick up changes.
 

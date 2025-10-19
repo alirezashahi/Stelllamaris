@@ -193,7 +193,7 @@ export const sendOrderConfirmationEmail = action({
     const html = renderOrderEmailHtml({ ...order, items: itemsWithImages });
 
     const hasApiKey = !!process.env.RESEND_API_KEY;
-    const fromEmail = process.env.EMAIL_FROM || "orders@stellamaris.com";
+    const fromEmail = process.env.EMAIL_FROM || "orders@info.thestellamaris.shop";
     const fromName = process.env.EMAIL_FROM_NAME || "Stellamaris";
 
     console.log("[emails] env check", { hasApiKey, fromEmail, fromName });
