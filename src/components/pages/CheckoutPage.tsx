@@ -7,8 +7,12 @@ import { useCheckout, type ShippingInfo, type PaymentInfo } from '../../contexts
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import PromoCodeInput from '../checkout/PromoCodeInput';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-const CheckoutPage: React.FC = () => {
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY!);
+
+const CheckoutContent: React.FC = () => {
   const navigate = useNavigate();
   const { items: cartItems, getTotalPrice, clearCart } = useCart();
   const { user, isAuthenticated, signIn } = useAuth();
@@ -34,6 +38,9 @@ const CheckoutPage: React.FC = () => {
     restoreCheckoutData,
   } = useCheckout();
 
+  const stripe = useStripe();
+  const elements = useElements();
+
   // State for saved addresses and discount functionality
   const [showSavedAddresses, setShowSavedAddresses] = useState(false);
   const [showSavedPaymentMethods, setShowSavedPaymentMethods] = useState(false);
@@ -44,6 +51,8 @@ const CheckoutPage: React.FC = () => {
     type: 'percentage' | 'fixed_amount' | 'free_shipping';
     promoCodeId: string;
   } | null>(null);
+
+  const createPaymentIntent = useAction(api.payments.createPaymentIntent);
 
   // Fetch saved addresses and payment methods for authenticated users
   const savedAddresses = useQuery(
@@ -59,7 +68,7 @@ const CheckoutPage: React.FC = () => {
   // Order creation and address/payment mutations
   const createOrder = useMutation(api.orders.createOrder);
   const addAddress = useMutation(api.addresses.addAddress);
-  const addPaymentMethod = useMutation(api.paymentMethods.addPaymentMethod);
+  // const addPaymentMethod = useMutation(api.paymentMethods.addPaymentMethod); // Disabled: do not store raw card data
   const sendOrderConfirmationEmail = useAction(api.emails.sendOrderConfirmationEmail);
 
   // Populate user data if authenticated (but don't overwrite existing data)
@@ -174,7 +183,6 @@ const CheckoutPage: React.FC = () => {
     // Check if user is authenticated before proceeding to payment
     if (!isAuthenticated) {
       // Preserve all data before authentication
-      console.log('Preserving checkout data before authentication...');
       preserveCheckoutData();
       
       // User needs to sign in before payment
@@ -194,7 +202,6 @@ const CheckoutPage: React.FC = () => {
 
   const handlePlaceOrder = async () => {
     if (!isAuthenticated) {
-      // This shouldn't happen, but failsafe
       setCurrentStep(2.5);
       return;
     }
@@ -215,33 +222,53 @@ const CheckoutPage: React.FC = () => {
             state: shippingInfo.state,
             zipCode: shippingInfo.zipCode,
             country: shippingInfo.country,
-            isDefault: !savedAddresses || savedAddresses.length === 0, // Make default if it's the first address
+            isDefault: !savedAddresses || savedAddresses.length === 0,
           });
         } catch (error) {
           console.error('Failed to save address:', error);
         }
       }
 
-      // Save new payment method if requested (only if it's not a saved method)
-      if (saveNewPaymentMethod && paymentInfo.cardNumber && !isUsingExistingPaymentMethod) {
-        try {
-          await addPaymentMethod({
-            clerkUserId: user!.id,
-            cardNumber: paymentInfo.cardNumber,
-            expiryDate: paymentInfo.expiryDate,
-            nameOnCard: paymentInfo.nameOnCard,
-            isDefault: !savedPaymentMethods || savedPaymentMethods.length === 0, // Make default if it's the first payment method
-          });
-          console.log('Payment method saved successfully (or updated if it was a duplicate)');
-        } catch (error) {
-          console.error('Failed to save payment method:', error);
-        }
+      // Create Stripe PaymentIntent
+      if (!stripe || !elements) {
+        throw new Error('Stripe has not loaded yet. Please try again momentarily.');
+      }
+
+      const amountInCents = Math.round(total * 100);
+      const intent = await createPaymentIntent({
+        amount: amountInCents,
+        currency: 'usd',
+        email: shippingInfo.email || user!.email,
+        orderNumber: undefined,
+      });
+
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        throw new Error('Card input is not ready.');
+      }
+
+      const { paymentIntent, error } = await stripe.confirmCardPayment(intent.clientSecret, {
+        payment_method: {
+          card: cardElement,
+        },
+      });
+
+      if (error) {
+        console.error('Payment failed:', error.message);
+        setIsProcessing(false);
+        return;
+      }
+
+      if (!paymentIntent || paymentIntent.status !== 'succeeded') {
+        console.error('Payment did not succeed:', paymentIntent?.status);
+        setIsProcessing(false);
+        return;
       }
 
       // Prepare cart items for order creation
       const orderItems = cartItems.map(item => ({
-        productId: item.productId as any, // Type assertion for Convex ID
-        variantId: item.variant?.id as any, // Type assertion for Convex ID
+        productId: item.productId as any,
+        variantId: item.variant?.id as any,
         productName: item.productName,
         variantName: item.variant?.name,
         quantity: item.quantity,
@@ -277,9 +304,9 @@ const CheckoutPage: React.FC = () => {
           zipCode: shippingInfo.zipCode,
           country: shippingInfo.country,
         },
-        paymentMethod: paymentInfo.cardNumber.includes('****') 
-          ? paymentInfo.cardNumber 
-          : `**** **** **** ${paymentInfo.cardNumber.slice(-4)}`,
+        paymentMethod: 'Stripe Card',
+        paymentStatus: 'paid',
+        stripePaymentIntentId: intent.paymentIntentId,
         selectedCharityType: selectedCharity as any,
       });
       
@@ -294,7 +321,7 @@ const CheckoutPage: React.FC = () => {
       clearCart();
       clearCheckoutData();
       
-      // Redirect to account page (order history tab) instead of order confirmation
+      // Redirect to account page (order history tab)
       navigate('/account?tab=orders', { 
         state: { 
           orderNumber: orderResult.orderNumber,
@@ -354,113 +381,113 @@ const CheckoutPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex items-center mb-8">
-          <button
-            onClick={() => navigate('/cart')}
-            className="flex items-center text-gray-600 hover:text-gray-900 mr-4"
-          >
-            <ArrowLeft className="h-5 w-5 mr-1" />
-            Back to Cart
-          </button>
-          <h1 className="text-3xl font-bold text-gray-900">Checkout</h1>
-        </div>
-
-        {/* Progress Steps */}
-        <div className="flex items-center justify-center mb-8">
-          <div className="flex items-center space-x-4">
-            {[
-              { step: 1, label: 'Shipping' },
-              { step: 2, label: 'Payment' },
-              { step: 3, label: 'Review' }
-            ].map(({ step, label }) => (
-              <div key={step} className="flex items-center">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      currentStep >= step
-                        ? 'bg-stellamaris-600 text-white'
-                        : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {step}
-                  </div>
-                  <span className="text-xs text-gray-600 mt-1">{label}</span>
-                </div>
-                {step < 3 && (
-                  <div
-                    className={`w-16 h-1 mx-2 ${
-                      currentStep > step ? 'bg-stellamaris-600' : 'bg-gray-200'
-                    }`}
-                  />
-                )}
-              </div>
-            ))}
+      <div className="min-h-screen bg-gray-50">
+        <div className="container mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="flex items-center mb-8">
+            <button
+              onClick={() => navigate('/cart')}
+              className="flex items-center text-gray-600 hover:text-gray-900 mr-4"
+            >
+              <ArrowLeft className="h-5 w-5 mr-1" />
+              Back to Cart
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900">Checkout</h1>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-2">
-            {/* Step 1: Shipping Information */}
-            {currentStep === 1 && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-6">Shipping Information</h2>
-                
-                {/* Saved Addresses Section */}
-                {isAuthenticated && savedAddresses && savedAddresses.length > 0 && (
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-medium text-gray-900">Saved Addresses</h3>
-                      <button
-                        type="button"
-                        onClick={() => setShowSavedAddresses(!showSavedAddresses)}
-                        className="text-stellamaris-600 hover:text-stellamaris-700 flex items-center space-x-1"
-                      >
-                        <MapPin size={16} />
-                        <span>{showSavedAddresses ? 'Hide' : 'Show'} saved addresses</span>
-                      </button>
+          {/* Progress Steps */}
+          <div className="flex items-center justify-center mb-8">
+            <div className="flex items-center space-x-4">
+              {[
+                { step: 1, label: 'Shipping' },
+                { step: 2, label: 'Payment' },
+                { step: 3, label: 'Review' }
+              ].map(({ step, label }) => (
+                <div key={step} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                        currentStep >= step
+                          ? 'bg-stellamaris-600 text-white'
+                          : 'bg-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {step}
                     </div>
-                    
-                    {showSavedAddresses && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        {savedAddresses.map((address) => (
-                          <div
-                            key={address._id}
-                            className="border border-gray-200 rounded-lg p-4 hover:border-stellamaris-300 cursor-pointer transition-colors"
-                            onClick={() => handleSelectSavedAddress(address)}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <p className="font-medium text-gray-900">
-                                  {address.firstName} {address.lastName}
-                                </p>
-                                <p className="text-sm text-gray-600">{address.addressLine1}</p>
-                                {address.addressLine2 && (
-                                  <p className="text-sm text-gray-600">{address.addressLine2}</p>
-                                )}
-                                <p className="text-sm text-gray-600">
-                                  {address.city}, {address.state} {address.zipCode}
-                                </p>
-                                <p className="text-sm text-gray-600">{address.country}</p>
-                              </div>
-                              {address.isDefault && (
-                                <span className="bg-stellamaris-100 text-stellamaris-800 text-xs font-medium px-2 py-1 rounded">
-                                  Default
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    <div className="border-t border-gray-200 pt-4">
-                      <p className="text-sm text-gray-600 mb-4">Or enter a new address:</p>
-                    </div>
+                    <span className="text-xs text-gray-600 mt-1">{label}</span>
                   </div>
+                  {step < 3 && (
+                    <div
+                      className={`w-16 h-1 mx-2 ${
+                        currentStep > step ? 'bg-stellamaris-600' : 'bg-gray-200'
+                      }`}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Main Content */}
+            <div className="lg:col-span-2">
+              {/* Step 1: Shipping Information */}
+              {currentStep === 1 && (
+                <div className="bg-white rounded-lg shadow-sm p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-6">Shipping Information</h2>
+                  
+                  {/* Saved Addresses Section */}
+                  {isAuthenticated && savedAddresses && savedAddresses.length > 0 && (
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium text-gray-900">Saved Addresses</h3>
+                        <button
+                          type="button"
+                          onClick={() => setShowSavedAddresses(!showSavedAddresses)}
+                          className="text-stellamaris-600 hover:text-stellamaris-700 flex items-center space-x-1"
+                        >
+                          <MapPin size={16} />
+                          <span>{showSavedAddresses ? 'Hide' : 'Show'} saved addresses</span>
+                        </button>
+                      </div>
+                      
+                      {showSavedAddresses && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                          {savedAddresses.map((address) => (
+                            <div
+                              key={address._id}
+                              className="border border-gray-200 rounded-lg p-4 hover:border-stellamaris-300 cursor-pointer transition-colors"
+                              onClick={() => handleSelectSavedAddress(address)}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <p className="font-medium text-gray-900">
+                                    {address.firstName} {address.lastName}
+                                  </p>
+                                  <p className="text-sm text-gray-600">{address.addressLine1}</p>
+                                  {address.addressLine2 && (
+                                    <p className="text-sm text-gray-600">{address.addressLine2}</p>
+                                  )}
+                                  <p className="text-sm text-gray-600">
+                                    {address.city}, {address.state} {address.zipCode}
+                                  </p>
+                                  <p className="text-sm text-gray-600">{address.country}</p>
+                                </div>
+                                {address.isDefault && (
+                                  <span className="bg-stellamaris-100 text-stellamaris-800 text-xs font-medium px-2 py-1 rounded">
+                                    Default
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      <div className="border-t border-gray-200 pt-4">
+                        <p className="text-sm text-gray-600 mb-4">Or enter a new address:</p>
+                      </div>
+                    </div>
                 )}
 
                 <form onSubmit={handleShippingSubmit} className="space-y-4">
@@ -604,8 +631,8 @@ const CheckoutPage: React.FC = () => {
             )}
 
             {/* Step 2: Payment Information */}
-            {currentStep === 2 && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className={`bg-white rounded-lg shadow-sm p-6 ${currentStep !== 2 ? 'hidden' : ''}`}>
+
                 <h2 className="text-xl font-semibold text-gray-900 mb-6">Payment Information</h2>
                 
                 {/* Saved Payment Methods Section */}
@@ -665,85 +692,17 @@ const CheckoutPage: React.FC = () => {
                 <form onSubmit={handlePaymentSubmit} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Card Number *
+                      Card Details *
                     </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        required
-                        placeholder="1234 5678 9012 3456"
-                        value={paymentInfo.cardNumber}
-                        onChange={(e) => updatePaymentInfo({cardNumber: e.target.value})}
-                        className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                      />
-                      <CreditCard className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <div className="border border-gray-300 rounded-md px-3 py-2">
+                      <CardElement options={{ hidePostalCode: true }} />
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Expiry Date *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="MM/YY"
-                        value={paymentInfo.expiryDate}
-                        onChange={(e) => updatePaymentInfo({expiryDate: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        CVV *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="123"
-                        value={paymentInfo.cvv}
-                        onChange={(e) => updatePaymentInfo({cvv: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Name on Card *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={paymentInfo.nameOnCard}
-                      onChange={(e) => updatePaymentInfo({nameOnCard: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                    />
                   </div>
 
                   <div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
                     <Lock className="h-4 w-4" />
                     <span>Your payment information is secure and encrypted</span>
                   </div>
-
-                  {!isUsingExistingPaymentMethod && (
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="savePaymentMethod"
-                        checked={saveNewPaymentMethod}
-                        onChange={(e) => setSaveNewPaymentMethod(e.target.checked)}
-                        className="text-stellamaris-600 focus:ring-stellamaris-500"
-                      />
-                      <label htmlFor="savePaymentMethod" className="text-sm text-gray-700">
-                        Save this payment method for future orders (card details will be securely stored)
-                        <span className="block text-xs text-gray-500 mt-1">
-                          Note: If this card already exists, we'll update it instead of creating a duplicate
-                        </span>
-                      </label>
-                    </div>
-                  )}
 
                   <div className="flex space-x-4">
                     <button
@@ -762,7 +721,6 @@ const CheckoutPage: React.FC = () => {
                   </div>
                 </form>
               </div>
-            )}
 
             {/* Step 2.5: Authentication Required */}
             {currentStep === 2.5 && (
@@ -988,6 +946,14 @@ const CheckoutPage: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const CheckoutPage: React.FC = () => {
+  return (
+    <Elements stripe={stripePromise}>
+      <CheckoutContent />
+    </Elements>
   );
 };
 

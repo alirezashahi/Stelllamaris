@@ -53,6 +53,13 @@ export const createOrder = mutation({
       country: v.string(),
     }),
     paymentMethod: v.string(),
+    paymentStatus: v.union(
+      v.literal("pending"),
+      v.literal("paid"),
+      v.literal("failed"),
+      v.literal("refunded")
+    ),
+    stripePaymentIntentId: v.optional(v.string()),
     selectedCharityType: v.optional(v.union(
       v.literal("animal_shelter"),
       v.literal("environmental"),
@@ -84,8 +91,9 @@ export const createOrder = mutation({
       charityDonationAmount: args.charityDonationAmount,
       totalAmount: args.totalAmount,
       shippingAddress: args.shippingAddress,
-      paymentStatus: "paid",
+      paymentStatus: args.paymentStatus,
       paymentMethod: args.paymentMethod,
+      stripePaymentIntentId: args.stripePaymentIntentId,
       selectedCharityType: args.selectedCharityType,
     });
 

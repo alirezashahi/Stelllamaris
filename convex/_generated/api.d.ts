@@ -22,6 +22,7 @@ import type * as fileUpload from "../fileUpload.js";
 import type * as http from "../http.js";
 import type * as orders from "../orders.js";
 import type * as paymentMethods from "../paymentMethods.js";
+import type * as payments from "../payments.js";
 import type * as products from "../products.js";
 import type * as promoCodes from "../promoCodes.js";
 import type * as returns from "../returns.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   orders: typeof orders;
   paymentMethods: typeof paymentMethods;
+  payments: typeof payments;
   products: typeof products;
   promoCodes: typeof promoCodes;
   returns: typeof returns;
