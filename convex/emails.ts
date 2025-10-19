@@ -145,28 +145,36 @@ export const sendOrderConfirmationEmail = action({
   handler: async (ctx, args): Promise<{ status: string; id?: string }> => {
     "use node";
 
+    console.log("[emails] sendOrderConfirmationEmail invoked", { orderNumber: args.orderNumber });
+
     const order: Order | null = await ctx.runQuery(api.orders.getOrderByNumber, {
       orderNumber: args.orderNumber,
     });
+
+    console.log("[emails] getOrderByNumber result", order ? { orderNumber: order.orderNumber, email: order.email } : null);
 
     if (!order) {
       return { status: "not_found" };
     }
 
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      throw new Error("RESEND_API_KEY not configured in Convex environment");
-    }
-
+    const hasApiKey = !!process.env.RESEND_API_KEY;
     const fromEmail = process.env.EMAIL_FROM || "orders@stellamaris.com";
     const fromName = process.env.EMAIL_FROM_NAME || "Stellamaris";
 
+    console.log("[emails] env check", { hasApiKey, fromEmail, fromName });
+
+    if (!hasApiKey) {
+      throw new Error("RESEND_API_KEY not configured in Convex environment");
+    }
+
     const html = renderOrderEmailHtml(order);
+
+    console.log("[emails] sending to Resend", { to: order.email, from: `${fromName} <${fromEmail}>` });
 
     const response: Response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -178,6 +186,8 @@ export const sendOrderConfirmationEmail = action({
     });
 
     const data: any = await response.json().catch(() => ({}));
+    console.log("[emails] Resend response", { status: response.status, ok: response.ok, data });
+
     if (!response.ok) {
       throw new Error(
         typeof data === "object" && data && (data as any).error?.message
