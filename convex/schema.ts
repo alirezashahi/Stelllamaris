@@ -402,6 +402,8 @@ export default defineSchema({
     requestedAmount: v.optional(v.number()),
     approvedAmount: v.optional(v.number()),
     rmaNumber: v.optional(v.string()),
+    // Stripe refund tracking
+    stripeRefundId: v.optional(v.string()),
     trackingNumber: v.optional(v.string()),
     adminNotes: v.optional(v.string()),
     customerNotes: v.optional(v.string()),

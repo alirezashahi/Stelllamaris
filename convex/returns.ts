@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
+import Stripe from "stripe";
 
 /**
  * Helper function to check if user can request return for an order
@@ -352,6 +353,61 @@ export const updateReturnRequestStatus = mutation({
 
     if (args.status === "completed") {
       updateData.completedAt = Date.now();
+    }
+
+    // If approving the return, attempt Stripe refund automatically
+    if (args.status === "approved") {
+      // Load the return request and its order
+      const returnRequest = await ctx.db.get(args.returnRequestId);
+      if (!returnRequest) {
+        throw new Error("Return request not found");
+      }
+      const order = await ctx.db.get(returnRequest.orderId as Id<"orders">);
+      if (!order) {
+        throw new Error("Associated order not found");
+      }
+
+      // Only attempt refund if the order has a Stripe payment intent id
+      if (order.stripePaymentIntentId) {
+        const secret = process.env.STRIPE_SECRET_KEY;
+        if (!secret) {
+          throw new Error("STRIPE_SECRET_KEY is not configured in Convex environment");
+        }
+
+        const stripe = new Stripe(secret);
+
+        // Determine refund amount (in cents). If not provided, default to full order total
+        const orderTotalCents = Math.round((order.totalAmount || 0) * 100);
+        const approvedAmountCents = Math.round(
+          (args.approvedAmount ?? returnRequest.approvedAmount ?? order.totalAmount || 0) * 100
+        );
+        const refundAmountCents = Math.min(approvedAmountCents || orderTotalCents, orderTotalCents);
+
+        // Create refund (supports partial refunds)
+        const refund = await stripe.refunds.create({
+          payment_intent: order.stripePaymentIntentId,
+          amount: refundAmountCents > 0 ? refundAmountCents : undefined,
+        });
+
+        // Persist refund metadata to the return request and possibly update the order status
+        updateData.approvedAmount = (args.approvedAmount ?? returnRequest.approvedAmount ?? order.totalAmount);
+        updateData.stripeRefundId = refund.id as any;
+
+        // If full refund, mark order as refunded
+        if (refundAmountCents >= orderTotalCents) {
+          await ctx.db.patch(order._id as Id<"orders">, {
+            paymentStatus: "refunded",
+            status: "refunded",
+            adminNotes: `Refunded via Stripe refund ${refund.id}`,
+          } as any);
+        } else {
+          // For partial refunds, at least annotate the order
+          const note = `Partial refund of $${(refundAmountCents / 100).toFixed(2)} via Stripe refund ${refund.id}`;
+          await ctx.db.patch(order._id as Id<"orders">, {
+            adminNotes: order.adminNotes ? `${order.adminNotes}\n${note}` : note,
+          } as any);
+        }
+      }
     }
 
     await ctx.db.patch(args.returnRequestId, updateData);
