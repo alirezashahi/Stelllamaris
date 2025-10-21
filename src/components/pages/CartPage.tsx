@@ -2,11 +2,133 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Minus, Trash2, ShoppingBag, ArrowLeft, Tag } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import { Id } from '../../../convex/_generated/dataModel'
 
 const CartPage = () => {
-  const { items, updateQuantity, removeFromCart, getTotalPrice, getTotalItems } = useCart()
+  const { items, updateQuantity, removeFromCart, getTotalPrice, getTotalItems, setItemShippingOption } = useCart()
   const [promoCode, setPromoCode] = useState('')
   const [appliedPromo, setAppliedPromo] = useState<{ code: string, discount: number } | null>(null)
+
+  // Component for individual cart item with shipping options
+  const CartItemComponent: React.FC<{ item: any }> = ({ item }) => {
+    const shippingOptions = useQuery(
+      api.shippingOptions.getProductShippingOptions,
+      { productId: item.productId as unknown as Id<'products'> }
+    )
+    const formatPrice = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
+    
+    const itemPrice = item.basePrice + (item.variant?.priceAdjustment || 0)
+    const itemTotal = itemPrice * item.quantity
+
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="flex gap-4">
+          {/* Product Image */}
+          <div className="w-24 h-24 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+            <img
+              src={item.imageUrl || 'https://via.placeholder.com/96x96'}
+              alt={item.productName}
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          {/* Product Details */}
+          <div className="flex-1">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-900">
+                  <Link 
+                    to={`/product/${item.productSlug}`}
+                    className="hover:text-stellamaris-600 transition-colors"
+                  >
+                    {item.productName}
+                  </Link>
+                </h3>
+                {item.variant && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {item.variant.name}
+                    {item.variant.priceAdjustment !== 0 && (
+                      <span className="ml-2">
+                        ({item.variant.priceAdjustment > 0 ? '+' : ''}${item.variant.priceAdjustment})
+                      </span>
+                    )}
+                  </p>
+                )}
+                <div className="mt-2">
+                  <label className="block text-xs text-gray-600 mb-1">Delivery option</label>
+                  <select
+                    value={item.shippingOption?.id || ''}
+                    onChange={(e) => {
+                      const selectedId = e.target.value as unknown as Id<'productShippingOptions'>
+                      const selected = shippingOptions?.find(opt => opt._id === selectedId)
+                      const option = selected
+                        ? {
+                            id: selected._id,
+                            name: selected.name,
+                            description: selected.description,
+                            price: selected.price,
+                            estimatedDays: selected.estimatedDays,
+                          }
+                        : undefined
+                      setItemShippingOption(item.productId, item.variant?.id, option)
+                    }}
+                    className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                  >
+                    <option value="">Select an option</option>
+                    {shippingOptions?.map(opt => (
+                      <option key={opt._id} value={opt._id as unknown as string}>
+                        {opt.name} {opt.price === 0 ? '(Free)' : `(${formatPrice(opt.price)})`}
+                      </option>
+                    ))}
+                  </select>
+                  {item.shippingOption && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      {item.shippingOption.name} - {formatPrice(item.shippingOption.price)}
+                      <span className="text-gray-500 ml-1">({item.shippingOption.description})</span>
+                    </p>
+                  )}
+                </div>
+                <p className="text-lg font-bold text-gray-900 mt-2">${itemPrice}</p>
+              </div>
+
+              <button
+                onClick={() => handleRemoveItem(item.productId, item.variant?.id)}
+                className="text-gray-400 hover:text-red-600 transition-colors"
+              >
+                <Trash2 size={20} />
+              </button>
+            </div>
+
+            {/* Quantity Controls */}
+            <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center border border-gray-300 rounded-lg">
+                <button
+                  onClick={() => handleQuantityChange(item.productId, item.quantity - 1, item.variant?.id)}
+                  className="p-2 hover:bg-gray-100 transition-colors"
+                  disabled={item.quantity <= 1}
+                >
+                  <Minus size={16} />
+                </button>
+                <span className="px-4 py-2 min-w-[3rem] text-center">{item.quantity}</span>
+                <button
+                  onClick={() => handleQuantityChange(item.productId, item.quantity + 1, item.variant?.id)}
+                  className="p-2 hover:bg-gray-100 transition-colors"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">${itemTotal.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const handleQuantityChange = (productId: string, newQuantity: number, variantId?: string) => {
     updateQuantity(productId, newQuantity, variantId)
@@ -103,89 +225,9 @@ const CartPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
-            {items.map((item) => {
-              const itemPrice = item.basePrice + (item.variant?.priceAdjustment || 0)
-              const itemTotal = itemPrice * item.quantity
-
-              return (
-                <div key={`${item.productId}-${item.variant?.id || 'default'}`} className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex gap-4">
-                    {/* Product Image */}
-                    <div className="w-24 h-24 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                      <img
-                        src={item.imageUrl || 'https://via.placeholder.com/96x96'}
-                        alt={item.productName}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    {/* Product Details */}
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
-                            <Link 
-                              to={`/product/${item.productSlug}`}
-                              className="hover:text-stellamaris-600 transition-colors"
-                            >
-                              {item.productName}
-                            </Link>
-                          </h3>
-                          {item.variant && (
-                            <p className="text-sm text-gray-600 mt-1">
-                              {item.variant.name}
-                              {item.variant.priceAdjustment !== 0 && (
-                                <span className="ml-2">
-                                  ({item.variant.priceAdjustment > 0 ? '+' : ''}${item.variant.priceAdjustment})
-                                </span>
-                              )}
-                            </p>
-                          )}
-                          {item.shippingOption && (
-                            <p className="text-sm text-blue-600 mt-1 flex items-center">
-                              📦 {item.shippingOption.name} - ${(item.shippingOption.price / 100).toFixed(2)}
-                              <span className="text-gray-500 ml-1">({item.shippingOption.description})</span>
-                            </p>
-                          )}
-                          <p className="text-lg font-bold text-gray-900 mt-2">${itemPrice}</p>
-                        </div>
-
-                        <button
-                          onClick={() => handleRemoveItem(item.productId, item.variant?.id)}
-                          className="text-gray-400 hover:text-red-600 transition-colors"
-                        >
-                          <Trash2 size={20} />
-                        </button>
-                      </div>
-
-                      {/* Quantity Controls */}
-                      <div className="flex items-center justify-between mt-4">
-                        <div className="flex items-center border border-gray-300 rounded-lg">
-                          <button
-                            onClick={() => handleQuantityChange(item.productId, item.quantity - 1, item.variant?.id)}
-                            className="p-2 hover:bg-gray-100 transition-colors"
-                            disabled={item.quantity <= 1}
-                          >
-                            <Minus size={16} />
-                          </button>
-                          <span className="px-4 py-2 min-w-[3rem] text-center">{item.quantity}</span>
-                          <button
-                            onClick={() => handleQuantityChange(item.productId, item.quantity + 1, item.variant?.id)}
-                            className="p-2 hover:bg-gray-100 transition-colors"
-                          >
-                            <Plus size={16} />
-                          </button>
-                        </div>
-
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-gray-900">${itemTotal.toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+            {items.map((item) => (
+              <CartItemComponent key={`${item.productId}-${item.variant?.id || 'default'}`} item={item} />
+            ))}
           </div>
 
           {/* Order Summary */}

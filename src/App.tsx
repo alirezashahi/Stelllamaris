@@ -1,5 +1,6 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react'
+import { useEffect } from 'react'
 import Header from './components/layout/Header'
 import Footer from './components/layout/Footer'
 import Homepage from './components/pages/Homepage'
@@ -17,6 +18,17 @@ import AdminDashboard from './components/admin/AdminDashboard'
 import { CartProvider } from './contexts/CartContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { CheckoutProvider } from './contexts/CheckoutContext'
+
+// Scroll to top component
+const ScrollToTop = () => {
+  const { pathname } = useLocation()
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+
+  return null
+}
 
 // Protected Admin Route Component
 const ProtectedAdminRoute = ({ children }: { children: React.ReactNode }) => {
@@ -59,6 +71,7 @@ const App = () => {
     <CartProvider>
       <AuthProvider>
         <CheckoutProvider>
+          <ScrollToTop />
           <div className="min-h-screen flex flex-col">
             <Header />
             <main className="flex-1">

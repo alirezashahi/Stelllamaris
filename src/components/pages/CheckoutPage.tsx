@@ -9,12 +9,13 @@ import { api } from '../../../convex/_generated/api';
 import PromoCodeInput from '../checkout/PromoCodeInput';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Id } from '../../../convex/_generated/dataModel';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY!);
 
 const CheckoutContent: React.FC = () => {
   const navigate = useNavigate();
-  const { items: cartItems, getTotalPrice, clearCart } = useCart();
+  const { items: cartItems, getTotalPrice, clearCart, setItemShippingOption } = useCart();
   const { user, isAuthenticated, signIn } = useAuth();
   const {
     shippingInfo,
@@ -74,6 +75,49 @@ const CheckoutContent: React.FC = () => {
   const addAddress = useMutation(api.addresses.addAddress);
   // const addPaymentMethod = useMutation(api.paymentMethods.addPaymentMethod); // Disabled: do not store raw card data
   const sendOrderConfirmationEmail = useAction(api.emails.sendOrderConfirmationEmail);
+
+  // Per-item shipping selector to avoid hooks in loops
+  const ItemShippingOptionSelector: React.FC<{
+    productId: string;
+    variantId?: string;
+    valueId?: string;
+    onChange: (option: any) => void;
+  }> = ({ productId, variantId, valueId, onChange }) => {
+    const options = useQuery(
+      api.shippingOptions.getProductShippingOptions,
+      { productId: productId as unknown as Id<'products'> }
+    );
+
+    return (
+      <select
+        value={valueId || ''}
+        onChange={(e) => {
+          const selectedId = e.target.value as unknown as Id<'productShippingOptions'>
+          const selected = options?.find(opt => opt._id === selectedId)
+          const option = selected
+            ? {
+                id: selected._id,
+                name: selected.name,
+                description: selected.description,
+                price: selected.price,
+                estimatedDays: selected.estimatedDays,
+              }
+            : undefined
+          onChange(option)
+        }}
+        className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+      >
+        <option value="">Select option</option>
+        {options?.map(opt => (
+          <option key={opt._id} value={opt._id as unknown as string}>
+            {opt.name} {opt.price === 0 ? '(Free)' : `($${(opt.price/100).toFixed(2)})`}
+          </option>
+        ))}
+      </select>
+    );
+  };
+
+  const [shippingError, setShippingError] = useState<string | null>(null);
 
   // Populate user data if authenticated (but don't overwrite existing data)
   useEffect(() => {
@@ -184,6 +228,13 @@ const CheckoutContent: React.FC = () => {
 
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Require a delivery option for each cart item
+    const missing = cartItems.filter(ci => !ci.shippingOption);
+    if (missing.length > 0) {
+      setShippingError('Please choose a delivery option for each item before continuing.');
+      return;
+    }
+    setShippingError(null);
     setCurrentStep(2);
   };
 
@@ -625,6 +676,35 @@ const CheckoutContent: React.FC = () => {
                         onChange={(e) => updateShippingInfo({zipCode: e.target.value})}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
                       />
+                    </div>
+                  </div>
+
+                  {/* Delivery Options per item */}
+                  <div className="mt-6 border-t border-gray-200 pt-4">
+                    <h3 className="text-lg font-medium text-gray-900 mb-3">Delivery Options</h3>
+                    <p className="text-sm text-gray-600 mb-3">Choose a shipping option for each item.</p>
+                    {shippingError && (
+                      <p className="text-sm text-red-600 mb-2">{shippingError}</p>
+                    )}
+                    <div className="space-y-4">
+                      {cartItems.map(item => (
+                        <div key={`${item.productId}-${item.variant?.id || 'default'}`} className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{item.productName}{item.variant ? ` - ${item.variant.name}` : ''}</p>
+                            {item.shippingOption && (
+                              <p className="text-xs text-gray-600">Current: {item.shippingOption.name} (${(item.shippingOption.price/100).toFixed(2)})</p>
+                            )}
+                          </div>
+                          <div>
+                            <ItemShippingOptionSelector
+                              productId={item.productId}
+                              variantId={item.variant?.id}
+                              valueId={item.shippingOption?.id}
+                              onChange={(option) => setItemShippingOption(item.productId, item.variant?.id, option)}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 

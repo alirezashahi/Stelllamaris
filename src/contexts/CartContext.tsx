@@ -33,6 +33,11 @@ interface CartContextType {
   addToCart: (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => void
   removeFromCart: (productId: string, variantId?: string) => void
   updateQuantity: (productId: string, quantity: number, variantId?: string) => void
+  setItemShippingOption: (
+    productId: string,
+    variantId: string | undefined,
+    option: NonNullable<CartItem['shippingOption']> | undefined
+  ) => void
   clearCart: () => void
   getTotalItems: () => number
   getTotalPrice: () => number
@@ -55,6 +60,7 @@ interface CartProviderProps {
 }
 
 const GUEST_CART_STORAGE_KEY = 'stellamaris_guest_cart'
+const SHIPPING_PREFS_STORAGE_KEY = 'stellamaris_shipping_prefs'
 
 export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>([])
@@ -118,7 +124,19 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         basePrice: serverItem.basePrice,
         imageUrl: serverItem.imageUrl,
       }))
-      setItems(mapped)
+
+      // Merge any locally stored shipping preferences for session continuity
+      try {
+        const rawPrefs = localStorage.getItem(SHIPPING_PREFS_STORAGE_KEY)
+        const prefs = rawPrefs ? JSON.parse(rawPrefs) as Record<string, NonNullable<CartItem['shippingOption']>> : {}
+        const withPrefs = mapped.map(item => {
+          const key = `${item.productId}__${item.variant?.id || 'default'}`
+          return prefs[key] ? { ...item, shippingOption: prefs[key] } : item
+        })
+        setItems(withPrefs)
+      } catch {
+        setItems(mapped)
+      }
     }
   }, [currentUserId, userCart])
 
@@ -210,6 +228,33 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }, 0)
   }, [items])
 
+  const setItemShippingOption = useCallback((
+    productId: string,
+    variantId: string | undefined,
+    option: NonNullable<CartItem['shippingOption']> | undefined
+  ) => {
+    setItems(prevItems =>
+      prevItems.map(item =>
+        item.productId === productId && item.variant?.id === variantId
+          ? { ...item, shippingOption: option }
+          : item
+      )
+    )
+
+    // Persist to local storage for session continuity (works for guests and logged-in between refreshes)
+    try {
+      const raw = localStorage.getItem(SHIPPING_PREFS_STORAGE_KEY)
+      const prefs: Record<string, NonNullable<CartItem['shippingOption']>> = raw ? JSON.parse(raw) : {}
+      const key = `${productId}__${variantId || 'default'}`
+      if (option) {
+        prefs[key] = option
+      } else {
+        delete prefs[key]
+      }
+      localStorage.setItem(SHIPPING_PREFS_STORAGE_KEY, JSON.stringify(prefs))
+    } catch {}
+  }, [])
+
   // Transfer guest cart to user's account when they log in
   const transferGuestCartToUser = useCallback(async (clerkUserId: string) => {
     try {
@@ -256,6 +301,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     addToCart,
     removeFromCart,
     updateQuantity,
+    setItemShippingOption,
     clearCart,
     getTotalItems,
     getTotalPrice,
