@@ -4,7 +4,7 @@ import { api } from '../../convex/_generated/api'
 
 export interface CartItem {
   // Present when loaded from server for authenticated users
-  cartItemId?: string
+  cartItemId?: any // Convex ID type
   productId: string
   productName: string
   productSlug: string
@@ -157,7 +157,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         i => i.productId === productId && i.variant?.id === variantId
       )
       if (itemToRemove?.cartItemId) {
-        removeFromUserCartMutation({ cartItemId: itemToRemove.cartItemId }).catch((err) => {
+        removeFromUserCartMutation({ cartItemId: itemToRemove.cartItemId as any }).catch((err) => {
           console.error('Failed to remove item from server cart:', err)
         })
       }
@@ -185,7 +185,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         i => i.productId === productId && i.variant?.id === variantId
       )
       if (target?.cartItemId) {
-        updateCartItemQuantityMutation({ cartItemId: target.cartItemId, quantity }).catch((err) => {
+        updateCartItemQuantityMutation({ cartItemId: target.cartItemId as any, quantity }).catch((err) => {
           console.error('Failed to update server cart quantity:', err)
         })
       }
