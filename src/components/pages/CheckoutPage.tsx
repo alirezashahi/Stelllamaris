@@ -51,6 +51,10 @@ const CheckoutContent: React.FC = () => {
     type: 'percentage' | 'fixed_amount' | 'free_shipping';
     promoCodeId: string;
   } | null>(null);
+  
+  // Stripe card validation state
+  const [cardComplete, setCardComplete] = useState(false);
+  const [cardError, setCardError] = useState<string | null>(null);
 
   const createPaymentIntent = useAction(api.payments.createPaymentIntent);
 
@@ -143,6 +147,12 @@ const CheckoutContent: React.FC = () => {
     }
   }, [paymentInfo.cardNumber]);
 
+  // Handle Stripe card element changes
+  const handleCardChange = (event: any) => {
+    setCardComplete(event.complete);
+    setCardError(event.error ? event.error.message : null);
+  };
+
   const subtotal = getTotalPrice();
   const discountAmount = appliedPromoCode?.discountAmount || 0;
   const discountedSubtotal = subtotal - discountAmount;
@@ -188,6 +198,17 @@ const CheckoutContent: React.FC = () => {
       // User needs to sign in before payment
       setCurrentStep(2.5); // Special step for authentication prompt
       return;
+    }
+    
+    // Validate card details if not using existing payment method
+    if (!isUsingExistingPaymentMethod) {
+      if (!cardComplete) {
+        setCardError('Please enter complete card details');
+        return;
+      }
+      if (cardError) {
+        return;
+      }
     }
     
     setCurrentStep(3);
@@ -694,9 +715,17 @@ const CheckoutContent: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Card Details *
                     </label>
-                    <div className="border border-gray-300 rounded-md px-3 py-2">
-                      <CardElement options={{ hidePostalCode: true }} />
+                    <div className={`border rounded-md px-3 py-2 ${
+                      cardError ? 'border-red-300' : 'border-gray-300'
+                    }`}>
+                      <CardElement 
+                        options={{ hidePostalCode: true }} 
+                        onChange={handleCardChange}
+                      />
                     </div>
+                    {cardError && (
+                      <p className="mt-1 text-sm text-red-600">{cardError}</p>
+                    )}
                   </div>
 
                   <div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
@@ -714,7 +743,8 @@ const CheckoutContent: React.FC = () => {
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 bg-stellamaris-600 text-white py-3 px-4 rounded-md hover:bg-stellamaris-700 transition-colors font-medium"
+                      disabled={!isUsingExistingPaymentMethod && (!cardComplete || !!cardError)}
+                      className="flex-1 bg-stellamaris-600 text-white py-3 px-4 rounded-md hover:bg-stellamaris-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Review Order
                     </button>

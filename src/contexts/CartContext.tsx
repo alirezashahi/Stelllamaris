@@ -3,6 +3,8 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 
 export interface CartItem {
+  // Present when loaded from server for authenticated users
+  cartItemId?: string
   productId: string
   productName: string
   productSlug: string
@@ -61,6 +63,18 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
   // Convex mutations
   const syncGuestCartMutation = useMutation(api.cart.syncGuestCart)
+  const updateCartItemQuantityMutation = useMutation(api.cart.updateCartItemQuantity)
+  const removeFromUserCartMutation = useMutation(api.cart.removeFromUserCart)
+  
+  // When authenticated, derive Convex user and fetch server cart
+  const convexUser = useQuery(
+    api.users.getUserByClerkId,
+    currentUserId ? { clerkUserId: currentUserId } : "skip"
+  )
+  const userCart = useQuery(
+    api.cart.getUserCart,
+    convexUser ? { userId: convexUser._id } : "skip"
+  )
 
   // Load guest cart from localStorage on mount
   useEffect(() => {
@@ -83,6 +97,30 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       localStorage.setItem(GUEST_CART_STORAGE_KEY, JSON.stringify(items))
     }
   }, [items, isInitialized, currentUserId])
+
+  // Hydrate items from server for authenticated users
+  useEffect(() => {
+    if (currentUserId && Array.isArray(userCart)) {
+      // Map server cart format to CartItem
+      const mapped: CartItem[] = userCart.map((serverItem: any) => ({
+        cartItemId: serverItem._id,
+        productId: serverItem.productId,
+        productName: serverItem.productName,
+        productSlug: serverItem.productSlug,
+        variant: serverItem.variant
+          ? {
+              id: serverItem.variant.id,
+              name: serverItem.variant.name,
+              priceAdjustment: serverItem.variant.priceAdjustment,
+            }
+          : undefined,
+        quantity: serverItem.quantity,
+        basePrice: serverItem.basePrice,
+        imageUrl: serverItem.imageUrl,
+      }))
+      setItems(mapped)
+    }
+  }, [currentUserId, userCart])
 
   const addToCart = useCallback((item: Omit<CartItem, 'quantity'> & { quantity?: number }) => {
     const quantity = item.quantity || 1
@@ -108,12 +146,23 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   }, [])
 
   const removeFromCart = useCallback((productId: string, variantId?: string) => {
-    setItems(prevItems => 
-      prevItems.filter(item => 
-        !(item.productId === productId && item.variant?.id === variantId)
-      )
+    setItems(prevItems =>
+      prevItems.filter(item => !(item.productId === productId && item.variant?.id === variantId))
     )
-  }, [])
+
+    // If authenticated, also remove from server cart
+    if (currentUserId) {
+      // Find the item we just removed to get its server cart item id
+      const itemToRemove = items.find(
+        i => i.productId === productId && i.variant?.id === variantId
+      )
+      if (itemToRemove?.cartItemId) {
+        removeFromUserCartMutation({ cartItemId: itemToRemove.cartItemId }).catch((err) => {
+          console.error('Failed to remove item from server cart:', err)
+        })
+      }
+    }
+  }, [currentUserId, items, removeFromUserCartMutation])
 
   const updateQuantity = useCallback((productId: string, quantity: number, variantId?: string) => {
     if (quantity <= 0) {
@@ -121,14 +170,27 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       return
     }
 
-    setItems(prevItems => 
-      prevItems.map(item => 
+    // Optimistic local update
+    setItems(prevItems =>
+      prevItems.map(item =>
         item.productId === productId && item.variant?.id === variantId
           ? { ...item, quantity }
           : item
       )
     )
-  }, [removeFromCart])
+
+    // If authenticated, sync to server
+    if (currentUserId) {
+      const target = items.find(
+        i => i.productId === productId && i.variant?.id === variantId
+      )
+      if (target?.cartItemId) {
+        updateCartItemQuantityMutation({ cartItemId: target.cartItemId, quantity }).catch((err) => {
+          console.error('Failed to update server cart quantity:', err)
+        })
+      }
+    }
+  }, [currentUserId, items, removeFromCart, updateCartItemQuantityMutation])
 
   const clearCart = useCallback(() => {
     setItems([])
@@ -182,11 +244,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     try {
       console.log('Loading cart for user', clerkUserId);
       
-      // For now, since getUserCart expects a Convex user ID,
-      // we'll need to implement a different approach
-      // The cart will be loaded properly once the user interacts with it
+      // Set current user; reactive queries above will hydrate the cart
       setCurrentUserId(clerkUserId);
-      setItems([]);
     } catch (error) {
       console.error('Failed to load user cart:', error);
     }

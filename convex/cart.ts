@@ -97,7 +97,9 @@ export const getUserCart = query({
         const product = await ctx.db.get(item.productId);
         if (!product) return null;
 
-        let variant = null;
+    let variant = undefined as
+      | { id: any; name: string; priceAdjustment: number }
+      | undefined;
         if (item.variantId) {
           const productVariant = await ctx.db.get(item.variantId);
           if (productVariant) {
