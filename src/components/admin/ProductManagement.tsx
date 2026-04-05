@@ -436,12 +436,14 @@ const ProductManagement: React.FC = () => {
       await createCategory({
         name: categoryFormData.name,
         description: categoryFormData.description || undefined,
+        parentCategoryId: categoryFormData.parentCategoryId ? (categoryFormData.parentCategoryId as Id<"categories">) : undefined,
       });
       
       setShowCategoryForm(false);
       setCategoryFormData({ name: '', description: '', parentCategoryId: '' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create category:', error);
+      alert(`Failed to create category: ${error.message || 'Unknown error'}`);
     }
   };
 

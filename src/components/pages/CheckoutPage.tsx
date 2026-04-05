@@ -11,7 +11,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Id } from '../../../convex/_generated/dataModel';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY!);
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY!);
 
 const CheckoutContent: React.FC = () => {
   const navigate = useNavigate();
@@ -44,8 +44,7 @@ const CheckoutContent: React.FC = () => {
 
   // State for saved addresses and discount functionality
   const [showSavedAddresses, setShowSavedAddresses] = useState(false);
-  const [showSavedPaymentMethods, setShowSavedPaymentMethods] = useState(false);
-  const [isUsingExistingPaymentMethod, setIsUsingExistingPaymentMethod] = useState(false);
+
   const [appliedPromoCode, setAppliedPromoCode] = useState<{
     code: string;
     discountAmount: number;
@@ -65,10 +64,7 @@ const CheckoutContent: React.FC = () => {
     isAuthenticated && user ? { clerkUserId: user.id } : "skip"
   );
 
-  const savedPaymentMethods = useQuery(
-    api.paymentMethods.getUserPaymentMethods,
-    isAuthenticated && user ? { clerkUserId: user.id } : "skip"
-  );
+
 
   // Order creation and address/payment mutations
   const createOrder = useMutation(api.orders.createOrder);
@@ -158,21 +154,7 @@ const CheckoutContent: React.FC = () => {
     }
   }, [isAuthenticated, user, shippingInfo, updateShippingInfo, savedAddresses]);
 
-  // Auto-populate payment method with default saved method
-  useEffect(() => {
-    if (isAuthenticated && savedPaymentMethods && savedPaymentMethods.length > 0 && !paymentInfo.cardNumber) {
-      const defaultPaymentMethod = savedPaymentMethods.find(method => method.isDefault) || savedPaymentMethods[0];
-      if (defaultPaymentMethod) {
-        updatePaymentInfo({
-          cardNumber: `**** **** **** ${defaultPaymentMethod.last4Digits}`,
-          expiryDate: `${defaultPaymentMethod.expiryMonth}/${defaultPaymentMethod.expiryYear}`,
-          nameOnCard: defaultPaymentMethod.nameOnCard,
-          cvv: '' // CVV is never saved for security
-        });
-        setIsUsingExistingPaymentMethod(true); // Flag that we're using an existing method
-      }
-    }
-  }, [isAuthenticated, savedPaymentMethods, paymentInfo.cardNumber, updatePaymentInfo]);
+
 
   // Handle user coming back from authentication
   useEffect(() => {
@@ -184,12 +166,7 @@ const CheckoutContent: React.FC = () => {
     }
   }, [isAuthenticated, currentStep, setCurrentStep, restoreCheckoutData]);
 
-  // Reset existing payment method flag when user enters new card number
-  useEffect(() => {
-    if (paymentInfo.cardNumber && !paymentInfo.cardNumber.includes('****') && paymentInfo.cardNumber.length > 0) {
-      setIsUsingExistingPaymentMethod(false);
-    }
-  }, [paymentInfo.cardNumber]);
+
 
   // Handle Stripe card element changes
   const handleCardChange = (event: any) => {
@@ -251,15 +228,13 @@ const CheckoutContent: React.FC = () => {
       return;
     }
     
-    // Validate card details if not using existing payment method
-    if (!isUsingExistingPaymentMethod) {
-      if (!cardComplete) {
-        setCardError('Please enter complete card details');
-        return;
-      }
-      if (cardError) {
-        return;
-      }
+    // Validate card details
+    if (!cardComplete) {
+      setCardError('Please enter complete card details');
+      return;
+    }
+    if (cardError) {
+      return;
     }
     
     setCurrentStep(3);
@@ -378,7 +353,7 @@ const CheckoutContent: React.FC = () => {
         },
         paymentMethod: 'Stripe Card',
         paymentStatus: 'paid',
-        stripePaymentIntentId: intent.paymentIntentId,
+        stripePaymentIntentId: paymentIntent.id,
         selectedCharityType: selectedCharity as any,
       });
       
@@ -424,18 +399,7 @@ const CheckoutContent: React.FC = () => {
     setSaveNewAddress(false); // Don't save if using existing address
   };
 
-  // Handle saved payment method selection
-  const handleSelectSavedPaymentMethod = (paymentMethod: any) => {
-    updatePaymentInfo({
-      cardNumber: `**** **** **** ${paymentMethod.last4Digits}`,
-      expiryDate: `${paymentMethod.expiryMonth}/${paymentMethod.expiryYear}`,
-      nameOnCard: paymentMethod.nameOnCard,
-      cvv: '' // CVV is never saved for security
-    });
-    setShowSavedPaymentMethods(false);
-    setSaveNewPaymentMethod(false); // Don't save if using existing payment method
-    setIsUsingExistingPaymentMethod(true); // Flag that we're using an existing method
-  };
+
 
   if (cartItems.length === 0) {
     return (
@@ -736,59 +700,6 @@ const CheckoutContent: React.FC = () => {
 
                 <h2 className="text-xl font-semibold text-gray-900 mb-6">Payment Information</h2>
                 
-                {/* Saved Payment Methods Section */}
-                {isAuthenticated && savedPaymentMethods && savedPaymentMethods.length > 0 && (
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-medium text-gray-900">Saved Payment Methods</h3>
-                      <button
-                        type="button"
-                        onClick={() => setShowSavedPaymentMethods(!showSavedPaymentMethods)}
-                        className="text-stellamaris-600 hover:text-stellamaris-700 flex items-center space-x-1"
-                      >
-                        <CreditCard size={16} />
-                        <span>{showSavedPaymentMethods ? 'Hide' : 'Show'} saved cards</span>
-                      </button>
-                    </div>
-                    
-                    {showSavedPaymentMethods && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        {savedPaymentMethods.map((paymentMethod) => (
-                          <div
-                            key={paymentMethod._id}
-                            className="border border-gray-200 rounded-lg p-4 hover:border-stellamaris-300 cursor-pointer transition-colors"
-                            onClick={() => handleSelectSavedPaymentMethod(paymentMethod)}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2 mb-2">
-                                  <CreditCard size={16} className="text-gray-400" />
-                                  <span className="font-medium text-gray-900 capitalize">
-                                    {paymentMethod.cardType}
-                                  </span>
-                                  <span className="text-gray-600">•••• {paymentMethod.last4Digits}</span>
-                                </div>
-                                <p className="text-sm text-gray-600">{paymentMethod.nameOnCard}</p>
-                                <p className="text-sm text-gray-600">
-                                  Expires {paymentMethod.expiryMonth}/{paymentMethod.expiryYear}
-                                </p>
-                              </div>
-                              {paymentMethod.isDefault && (
-                                <span className="bg-stellamaris-100 text-stellamaris-800 text-xs font-medium px-2 py-1 rounded">
-                                  Default
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    <div className="border-t border-gray-200 pt-4">
-                      <p className="text-sm text-gray-600 mb-4">Or enter a new payment method:</p>
-                    </div>
-                  </div>
-                )}
 
                 <form onSubmit={handlePaymentSubmit} className="space-y-4">
                   <div>
@@ -823,7 +734,7 @@ const CheckoutContent: React.FC = () => {
                     </button>
                     <button
                       type="submit"
-                      disabled={!isUsingExistingPaymentMethod && (!cardComplete || !!cardError)}
+                      disabled={!cardComplete || !!cardError}
                       className="flex-1 bg-stellamaris-600 text-white py-3 px-4 rounded-md hover:bg-stellamaris-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Review Order

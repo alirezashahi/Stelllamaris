@@ -379,7 +379,7 @@ export const updateReturnRequestStatus = mutation({
         // Determine refund amount (in cents). If not provided, default to full order total
         const orderTotalCents = Math.round((order.totalAmount || 0) * 100);
         const approvedAmountCents = Math.round(
-          (args.approvedAmount ?? returnRequest.approvedAmount ?? order.totalAmount || 0) * 100
+          ((args.approvedAmount ?? returnRequest.approvedAmount ?? order.totalAmount) || 0) * 100
         );
         const refundAmountCents = Math.min(approvedAmountCents || orderTotalCents, orderTotalCents);
 

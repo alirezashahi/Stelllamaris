@@ -24,18 +24,7 @@ interface Address {
   _creationTime: number
 }
 
-interface PaymentMethod {
-  _id: Id<"userPaymentMethods">
-  userId: Id<"users">
-  cardType: string
-  last4Digits: string
-  expiryMonth: string
-  expiryYear: string
-  nameOnCard: string
-  isDefault: boolean
-  stripePaymentMethodId?: string
-  _creationTime: number
-}
+
 
 const UserAccountPage = () => {
   const [activeTab, setActiveTab] = useState('profile')
@@ -55,6 +44,27 @@ const UserAccountPage = () => {
   const [showMessaging, setShowMessaging] = useState(false)
   const [selectedReturnForMessaging, setSelectedReturnForMessaging] = useState<any>(null)
 
+  // Success banner state
+  const [orderSuccess, setOrderSuccess] = useState<{
+    orderNumber: string;
+    total: number;
+    charityDonation: number;
+    selectedCharity: string;
+  } | null>(null)
+
+  useEffect(() => {
+    if (location.state?.orderNumber) {
+      setOrderSuccess({
+        orderNumber: location.state.orderNumber,
+        total: location.state.total || 0,
+        charityDonation: location.state.charityDonation || 0,
+        selectedCharity: location.state.selectedCharity || 'your cause'
+      });
+      // Clear the state from router history so it doesn't reappear on reload
+      window.history.replaceState({}, '');
+    }
+  }, [location.state]);
+
   // Convex queries and mutations
   const addresses = useQuery(api.addresses.getUserAddresses, 
     isAuthenticated && user ? { clerkUserId: user.id } : "skip"
@@ -62,9 +72,7 @@ const UserAccountPage = () => {
   const orders = useQuery(api.orders.getUserOrders,
     isAuthenticated && user ? { clerkUserId: user.id } : "skip"
   )
-  const paymentMethods = useQuery(api.paymentMethods.getUserPaymentMethods,
-    isAuthenticated && user ? { clerkUserId: user.id } : "skip"
-  )
+
   
   // Get current user's Convex user ID
   const convexUser = useQuery(
@@ -89,9 +97,7 @@ const UserAccountPage = () => {
   const addAddress = useMutation(api.addresses.addAddress)
   const updateAddress = useMutation(api.addresses.updateAddress)
   const deleteAddress = useMutation(api.addresses.deleteAddress)
-  const addPaymentMethod = useMutation(api.paymentMethods.addPaymentMethod)
-  const updatePaymentMethod = useMutation(api.paymentMethods.updatePaymentMethod)
-  const deletePaymentMethod = useMutation(api.paymentMethods.deletePaymentMethod)
+
   
   // Return mutations
   const deleteReturnRequest = useMutation(api.returns.deleteReturnRequest)
@@ -113,21 +119,13 @@ const UserAccountPage = () => {
     isDefault: false
   })
 
-  // Payment method form state
-  const [showPaymentMethodForm, setShowPaymentMethodForm] = useState(false)
-  const [editingPaymentMethod, setEditingPaymentMethod] = useState<PaymentMethod | null>(null)
-  const [paymentMethodForm, setPaymentMethodForm] = useState({
-    cardNumber: '',
-    expiryDate: '',
-    nameOnCard: '',
-    isDefault: false
-  })
+
 
   // Handle URL tab parameter
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search)
     const tabParam = urlParams.get('tab')
-    if (tabParam && ['profile', 'addresses', 'payment-methods', 'orders', 'returns', 'wishlist', 'impact', 'security'].includes(tabParam)) {
+    if (tabParam && ['profile', 'addresses', 'orders', 'returns', 'wishlist', 'impact', 'security'].includes(tabParam)) {
       setActiveTab(tabParam)
     }
   }, [location.search])
@@ -196,40 +194,7 @@ const UserAccountPage = () => {
     })
   }
 
-  const handlePaymentMethodSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user) return
 
-    try {
-      if (editingPaymentMethod) {
-        await updatePaymentMethod({
-          paymentMethodId: editingPaymentMethod._id,
-          ...paymentMethodForm
-        })
-      } else {
-        const result = await addPaymentMethod({
-          clerkUserId: user.id,
-          ...paymentMethodForm
-        })
-        // Note: The backend now handles duplicates automatically by updating existing cards
-        console.log('Payment method saved successfully:', result)
-      }
-      setShowPaymentMethodForm(false)
-      setEditingPaymentMethod(null)
-      resetPaymentMethodForm()
-    } catch (error) {
-      console.error('Failed to save payment method:', error)
-    }
-  }
-
-  const resetPaymentMethodForm = () => {
-    setPaymentMethodForm({
-      cardNumber: '',
-      expiryDate: '',
-      nameOnCard: '',
-      isDefault: false
-    })
-  }
   
   const handleAddToCart = async (item: any) => {
     const productKey = item.productId
@@ -377,21 +342,37 @@ const UserAccountPage = () => {
             <span className="mx-2">/</span>
             <span>My Account</span>
           </nav>
+          
+          {orderSuccess && (
+            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start justify-between">
+              <div className="flex items-start space-x-3">
+                <div className="bg-green-100 rounded-full p-2 mt-0.5">
+                  <Check className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-green-800 font-medium">Thank you for your order!</h3>
+                  <p className="text-green-700 text-sm mt-1">
+                    Your payment of ${orderSuccess.total.toFixed(2)} was successful (Order #{orderSuccess.orderNumber}). 
+                    Thank you for also donating ${orderSuccess.charityDonation.toFixed(2)} to {orderSuccess.selectedCharity.replace('_', ' ')}!
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setOrderSuccess(null)}
+                className="text-green-600 hover:text-green-800 p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          )}
+
           <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user.name || 'User'}!</h1>
           <p className="text-gray-600 mt-2">Manage your account and track your sustainable impact</p>
         </div>
 
         {/* Impact Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Payment Methods</p>
-                <p className="text-2xl font-bold text-gray-900">{paymentMethods?.length || 0}</p>
-              </div>
-              <CreditCard className="text-stellamaris-600" size={24} />
-            </div>
-          </div>
+
 
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center justify-between">
@@ -451,12 +432,7 @@ const UserAccountPage = () => {
                   icon={MapPin}
                   isActive={activeTab === 'addresses'}
                 />
-                <TabButton
-                  id="payment-methods"
-                  label="Payment Methods"
-                  icon={CreditCard}
-                  isActive={activeTab === 'payment-methods'}
-                />
+
                 <TabButton
                   id="orders"
                   label="Order History"
@@ -722,185 +698,7 @@ const UserAccountPage = () => {
                 </div>
               )}
 
-              {activeTab === 'payment-methods' && (
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-gray-900">Saved Payment Methods</h2>
-                    <button 
-                      onClick={() => {
-                        setShowPaymentMethodForm(true)
-                        setEditingPaymentMethod(null)
-                        resetPaymentMethodForm()
-                      }}
-                      className="bg-stellamaris-600 text-white px-4 py-2 rounded-md hover:bg-stellamaris-700 transition-colors flex items-center space-x-2"
-                    >
-                      <Plus size={16} />
-                      <span>Add Payment Method</span>
-                    </button>
-                  </div>
 
-                  {showPaymentMethodForm && (
-                    <div className="mb-6 p-6 border border-gray-200 rounded-lg bg-gray-50">
-                      <h3 className="font-semibold text-gray-900 mb-4">
-                        Add New Payment Method
-                      </h3>
-                      <form onSubmit={handlePaymentMethodSubmit} className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Card Number *</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="1234 5678 9012 3456"
-                            value={paymentMethodForm.cardNumber}
-                            onChange={(e) => setPaymentMethodForm({...paymentMethodForm, cardNumber: e.target.value})}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date *</label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="MM/YY"
-                              value={paymentMethodForm.expiryDate}
-                              onChange={(e) => setPaymentMethodForm({...paymentMethodForm, expiryDate: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Name on Card *</label>
-                            <input
-                              type="text"
-                              required
-                              value={paymentMethodForm.nameOnCard}
-                              onChange={(e) => setPaymentMethodForm({...paymentMethodForm, nameOnCard: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stellamaris-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id="isDefaultPayment"
-                            checked={paymentMethodForm.isDefault}
-                            onChange={(e) => setPaymentMethodForm({...paymentMethodForm, isDefault: e.target.checked})}
-                            className="mr-2"
-                          />
-                          <label htmlFor="isDefaultPayment" className="text-sm text-gray-700">
-                            Make this my default payment method
-                          </label>
-                        </div>
-
-                        <div className="flex space-x-4">
-                          <button
-                            type="submit"
-                            className="bg-stellamaris-600 text-white px-6 py-2 rounded-md hover:bg-stellamaris-700 transition-colors"
-                          >
-                            Save Payment Method
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowPaymentMethodForm(false)
-                              setEditingPaymentMethod(null)
-                              resetPaymentMethodForm()
-                            }}
-                            className="bg-gray-200 text-gray-800 px-6 py-2 rounded-md hover:bg-gray-300 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-
-                      <div className="mt-4 text-xs text-gray-500 bg-blue-50 p-3 rounded">
-                        <div className="flex items-start space-x-2">
-                          <Shield className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="font-medium text-blue-800">Security Information</p>
-                            <p className="text-blue-700">
-                              Only the last 4 digits, expiry date, and name will be stored securely. 
-                              Full card details are never saved for your protection.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {paymentMethods && paymentMethods.length > 0 ? (
-                    <div className="space-y-4">
-                      {paymentMethods.map((paymentMethod) => (
-                        <div key={paymentMethod._id} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-3 mb-2">
-                                <CreditCard className="h-5 w-5 text-gray-400" />
-                                <div>
-                                  <div className="flex items-center space-x-2">
-                                    <span className="font-semibold text-gray-900 capitalize">
-                                      {paymentMethod.cardType}
-                                    </span>
-                                    <span className="text-gray-600">•••• •••• •••• {paymentMethod.last4Digits}</span>
-                                    {paymentMethod.isDefault && (
-                                      <span className="px-2 py-1 rounded text-xs font-medium bg-stellamaris-100 text-stellamaris-800">
-                                        Default
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-gray-600">{paymentMethod.nameOnCard}</p>
-                                  <p className="text-sm text-gray-600">
-                                    Expires {paymentMethod.expiryMonth}/{paymentMethod.expiryYear}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={async () => {
-                                  if (confirm('Are you sure you want to delete this payment method?')) {
-                                    try {
-                                      await deletePaymentMethod({ paymentMethodId: paymentMethod._id });
-                                    } catch (error) {
-                                      console.error('Failed to delete payment method:', error);
-                                    }
-                                  }
-                                }}
-                                className="text-gray-600 hover:text-red-600 transition-colors p-1"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          <div className="mt-4 text-xs text-gray-500 bg-blue-50 p-3 rounded">
-                            <div className="flex items-start space-x-2">
-                              <Shield className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                              <div>
-                                <p className="font-medium text-blue-800">Secure Payment Method</p>
-                                <p className="text-blue-700">
-                                  Only the last 4 digits and expiry date are stored. Full card details are never saved for your security.
-                                  If you try to save the same card again, we'll just update the existing one instead of creating duplicates.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <CreditCard className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                      <p className="text-gray-600 mb-4">No saved payment methods yet.</p>
-                      <p className="text-sm text-gray-500 mb-4">
-                        Add a payment method above for faster checkout.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {activeTab === 'orders' && (
                 <div>

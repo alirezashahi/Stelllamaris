@@ -29,6 +29,7 @@ export const createCategory = mutation({
   args: {
     name: v.string(),
     description: v.optional(v.string()),
+    parentCategoryId: v.optional(v.id("categories")),
   },
   returns: v.id("categories"),
   handler: async (ctx, args) => {
@@ -53,6 +54,7 @@ export const createCategory = mutation({
       name: args.name,
       slug: slug,
       description: args.description,
+      parentCategoryId: args.parentCategoryId,
       isActive: true,
       sortOrder: 0,
     });
